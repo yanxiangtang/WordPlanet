@@ -15,6 +15,7 @@ export const defaultSettings: AgnesSettings = {
 export const defaultProfile: ChildProfile = {
   nickname: "Momo",
   age: 9,
+  gender: "boy",
   nativeLanguage: "Chinese",
   englishLevel: "intermediate"
 };
@@ -29,7 +30,11 @@ function readJson<T>(key: string, fallback: T): T {
 }
 
 export function loadSettings(): AgnesSettings {
-  return readJson(SETTINGS_KEY, defaultSettings);
+  const saved = readJson<Partial<AgnesSettings>>(SETTINGS_KEY, defaultSettings);
+  return {
+    ...defaultSettings,
+    ...saved
+  };
 }
 
 export function saveSettings(settings: AgnesSettings): void {
@@ -89,4 +94,3 @@ export const storage = {
   getVideo: () => get<VideoTaskState>("video", "active"),
   saveVideo: (video: VideoTaskState) => put("video", "active", video)
 };
-

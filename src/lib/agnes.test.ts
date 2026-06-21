@@ -1,15 +1,31 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildAgnesConnectionTestRequest,
   buildImageGenerationRequest,
   buildVideoTaskRequest,
   extractVideoResultUrl,
+  imagePromptForWord,
   normalizeAgnesBaseUrl
 } from "./agnes";
+import { selectDailyWords } from "../data/vocabulary";
 
 describe("Agnes API helpers", () => {
   it("normalizes the Agnes base URL without duplicating /v1", () => {
     expect(normalizeAgnesBaseUrl("https://apihub.agnes-ai.com/v1")).toBe("https://apihub.agnes-ai.com");
     expect(normalizeAgnesBaseUrl("https://apihub.agnes-ai.com/")).toBe("https://apihub.agnes-ai.com");
+  });
+
+  it("builds a connection test request against the normalized /v1/models endpoint", () => {
+    const request = buildAgnesConnectionTestRequest({
+      apiKey: "agnes-key",
+      baseUrl: "https://apihub.agnes-ai.com/v1/",
+      imageModel: "agnes-image-2.0-flash",
+      videoModel: "agnes-video-v2.0"
+    });
+
+    expect(request.url).toBe("https://apihub.agnes-ai.com/v1/models");
+    expect(request.init.method).toBe("GET");
+    expect(request.init.headers).toEqual({ Authorization: "Bearer agnes-key" });
   });
 
   it("builds image generation requests with response_format inside extra_body", () => {
@@ -44,5 +60,14 @@ describe("Agnes API helpers", () => {
       "https://example.com/video.mp4"
     );
   });
-});
 
+  it("asks Agnes for picture clues without readable letters or the target word", () => {
+    const word = selectDailyWords("school", 5)[1];
+    const prompt = imagePromptForWord(word);
+
+    expect(prompt).not.toContain(`word "${word.word}"`);
+    expect(prompt).toMatch(/Do not write the English word/i);
+    expect(prompt).toMatch(/no readable text/i);
+    expect(prompt).toMatch(/letters, captions, labels, signs/i);
+  });
+});

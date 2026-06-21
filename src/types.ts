@@ -35,6 +35,7 @@ export type AgnesSettings = {
 export type ChildProfile = {
   nickname: string;
   age: number;
+  gender: "girl" | "boy";
   nativeLanguage: "Chinese";
   englishLevel: "intermediate";
 };
@@ -58,6 +59,7 @@ export type LessonPack = {
   topic: PlanetTopic;
   title: string;
   createdAt: number;
+  assetPromptVersion: number;
   source: "agnes" | "sample";
   words: WordEntry[];
   assets: LessonAsset[];
@@ -81,4 +83,3 @@ export type VideoTaskState = {
   url?: string;
   error?: string;
 };
-

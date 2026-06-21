@@ -20,6 +20,24 @@ export function normalizeAgnesBaseUrl(baseUrl: string): string {
   return baseUrl.trim().replace(/\/+$/, "").replace(/\/v1$/, "");
 }
 
+export function buildAgnesConnectionTestRequest(settings: AgnesSettings): { url: string; init: RequestInit } {
+  return {
+    url: `${normalizeAgnesBaseUrl(settings.baseUrl)}/v1/models`,
+    init: {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${settings.apiKey}`
+      }
+    }
+  };
+}
+
+export async function testAgnesConnection(settings: AgnesSettings): Promise<void> {
+  const request = buildAgnesConnectionTestRequest(settings);
+  const response = await fetch(request.url, request.init);
+  if (!response.ok) throw new Error(`Agnes connection failed: ${response.status}`);
+}
+
 export function buildImageGenerationRequest(params: ImageGenerationParams) {
   return {
     model: params.model,
@@ -50,21 +68,52 @@ export function extractVideoResultUrl(result: Record<string, unknown>): string |
   return typeof remixed === "string" ? remixed : typeof url === "string" ? url : undefined;
 }
 
-export function imagePromptForWord(word: WordEntry): string {
+// Child-friendly cartoon / animation art styles. No photorealistic or realistic
+// looks — every style is illustrated, playful, and loved by kids. Each practice
+// group can rotate to a different style for visual variety.
+export const CHILD_ART_STYLES: string[] = [
+  "Pixar-style 3D cartoon animation, soft rounded shapes, warm cheerful lighting, expressive characters",
+  "Flat 2D vector cartoon illustration, bold clean outlines, bright primary colors, simple shapes",
+  "Hand-drawn storybook watercolor illustration, soft pastel colors, cozy and whimsical",
+  "Cute Japanese-style anime illustration, big sparkling eyes, playful colorful scenery",
+  "Crayon and colored-pencil children's drawing style, doodle-like, playful hand-made textures",
+  "Claymation plasticine cartoon style, soft sculpted 3D shapes, tactile and fun",
+  "Kawaii chibi cartoon style, super cute simplified rounded characters, adorable and friendly",
+  "Cel-shaded comic cartoon style, lively dynamic poses, bright saturated colors"
+];
+
+// Deterministically pick an art style from a seed string so the same practice
+// group always gets the same style, while different groups vary.
+export function pickArtStyle(seed: string): string {
+  let hash = 0;
+  for (let i = 0; i < seed.length; i += 1) {
+    hash = (hash * 31 + seed.charCodeAt(i)) | 0;
+  }
+  const index = Math.abs(hash) % CHILD_ART_STYLES.length;
+  return CHILD_ART_STYLES[index];
+}
+
+export function imagePromptForWord(word: WordEntry, style: string = CHILD_ART_STYLES[0]): string {
   return [
-    `Child-safe English vocabulary illustration for the word "${word.word}".`,
-    `Meaning for Chinese learners: ${word.meaningZh}.`,
-    `Scene: ${word.imagePromptHint}.`,
-    "Bright, friendly, non-scary, school-age children style.",
-    "No text, no watermark, no private information."
+    "Child-safe English vocabulary picture clue for a Chinese-speaking learner.",
+    `Target concept: ${word.word}. Chinese meaning for context: ${word.meaningZh}. This concept is metadata for choosing the visual subject only, never visible writing.`,
+    `Show only the visual scene or object: ${word.imagePromptHint}.`,
+    `Art style: ${style}.`,
+    "Bright, friendly, non-scary, made for school-age children who love cartoons.",
+    "Not photorealistic, no realistic photo look, no live-action — always illustrated and cartoonish.",
+    "Do not write the English word, Chinese meaning, spelling letters, or phonics in the image.",
+    "No readable text anywhere: no letters, captions, labels, signs, handwriting, book text, screen text, board text, posters, watermark, or private information.",
+    "If the scene includes a board, book, paper, screen, poster, or sign, keep it blank or use simple unreadable shapes only."
   ].join(" ");
 }
 
-export function videoRewardPrompt(pack: LessonPack): string {
+export function videoRewardPrompt(pack: LessonPack, style: string = CHILD_ART_STYLES[0]): string {
   const words = pack.words.map((word) => word.word).join(", ");
   return [
     `Create a short cheerful Word Planet reward video for a child who learned these English words: ${words}.`,
+    `Art style: ${style}.`,
     "Theme: School Planet celebration, friendly space-learning adventure, bright classroom/library visuals.",
+    "Not photorealistic, no realistic photo look, no live-action — always illustrated, cartoonish, and loved by kids.",
     "Safe for children age 9-10, no scary content, no text overlays, no personal information."
   ].join(" ");
 }
@@ -142,4 +191,3 @@ export async function pollAgnesVideo(settings: AgnesSettings, videoId: string): 
     error: typeof payload.error === "string" ? payload.error : undefined
   };
 }
-
