@@ -654,6 +654,120 @@ input {
   margin-top: 0;
 }
 
+.setup-card h2 svg {
+  vertical-align: -5px;
+  margin-right: 8px;
+}
+
+.parent-gate {
+  width: min(520px, calc(100vw - 32px));
+  margin: 44px auto 0;
+  text-align: center;
+}
+
+.parent-gate-icon {
+  width: 76px;
+  height: 76px;
+  margin: 0 auto 12px;
+  border-radius: 50%;
+  color: var(--theme-primary-dark);
+  background: var(--theme-primary-soft);
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--theme-primary-border);
+}
+
+.parent-password-form {
+  display: grid;
+  gap: 12px;
+  margin-top: 18px;
+  text-align: left;
+}
+
+.parent-password-form .primary-button {
+  width: 100%;
+}
+
+.parent-error {
+  margin: 0;
+  color: #b91c1c;
+  font-weight: 900;
+}
+
+.parent-status-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.parent-status-card .secondary-button {
+  align-self: flex-start;
+}
+
+.cache-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin: 14px 0;
+}
+
+.cache-stat-grid span {
+  min-width: 0;
+  padding: 12px;
+  border-radius: 8px;
+  color: #475569;
+  background: #f8fbff;
+  border: 1px solid #dbeafe;
+  font-weight: 800;
+}
+
+.cache-stat-grid strong {
+  display: block;
+  color: #102042;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cache-preview-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+  margin: 14px 0;
+}
+
+.cache-preview-grid img {
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: cover;
+  border-radius: 8px;
+  border: 1px solid #dbeafe;
+}
+
+.cache-actions {
+  margin-top: 12px;
+}
+
+.danger-button {
+  color: #b91c1c;
+  border-color: #fecaca;
+  background: #fff1f2;
+}
+
+.video-cache-empty {
+  min-height: 120px;
+  margin: 14px 0;
+  border-radius: 8px;
+  border: 1px dashed #cbd5e1;
+  color: #64748b;
+  background: #f8fafc;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  text-align: center;
+  font-weight: 800;
+}
+
 label {
   display: grid;
   gap: 7px;

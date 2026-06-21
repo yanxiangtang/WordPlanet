@@ -1,9 +1,21 @@
-import type { AgnesSettings, ChildProfile, LessonPack, MissionMastery, VideoTaskState } from "../types";
+import type {
+  AgnesSettings,
+  ChildProfile,
+  LearningPageState,
+  LearningScreen,
+  LessonPack,
+  MissionMastery,
+  ParentControlSettings,
+  VideoTaskState
+} from "../types";
 
 const SETTINGS_KEY = "word-planet:settings:v1";
 const PROFILE_KEY = "word-planet:profile:v1";
+const PARENT_CONTROLS_KEY = "word-planet:parent-controls:v1";
+const LEARNING_PAGE_KEY = "word-planet:learning-page:v1";
 const DB_NAME = "word-planet";
 const DB_VERSION = 1;
+const RESTORABLE_SCREENS = new Set<LearningScreen>(["home", "learn", "story", "game", "spell", "reward", "summary"]);
 
 export const defaultSettings: AgnesSettings = {
   apiKey: "",
@@ -18,6 +30,17 @@ export const defaultProfile: ChildProfile = {
   gender: "boy",
   nativeLanguage: "Chinese",
   englishLevel: "intermediate"
+};
+
+export const defaultParentControlSettings: ParentControlSettings = {
+  password: "",
+  createdAt: null
+};
+
+export const defaultLearningPageState: LearningPageState = {
+  screen: "home",
+  activeIndex: 0,
+  spellInput: ""
 };
 
 function readJson<T>(key: string, fallback: T): T {
@@ -47,6 +70,34 @@ export function loadProfile(): ChildProfile {
 
 export function saveProfile(profile: ChildProfile): void {
   localStorage.setItem(PROFILE_KEY, JSON.stringify(profile));
+}
+
+export function loadParentControlSettings(): ParentControlSettings {
+  const saved = readJson<Partial<ParentControlSettings>>(PARENT_CONTROLS_KEY, defaultParentControlSettings);
+  return {
+    password: typeof saved.password === "string" ? saved.password : "",
+    createdAt: typeof saved.createdAt === "number" ? saved.createdAt : null
+  };
+}
+
+export function saveParentControlSettings(settings: ParentControlSettings): void {
+  localStorage.setItem(PARENT_CONTROLS_KEY, JSON.stringify(settings));
+}
+
+export function loadLearningPageState(): LearningPageState {
+  const saved = readJson<Partial<LearningPageState>>(LEARNING_PAGE_KEY, defaultLearningPageState);
+  const screen = typeof saved.screen === "string" && RESTORABLE_SCREENS.has(saved.screen as LearningScreen) ? saved.screen : "home";
+  const activeIndex = typeof saved.activeIndex === "number" && saved.activeIndex >= 0 ? Math.floor(saved.activeIndex) : 0;
+  const spellInput = typeof saved.spellInput === "string" ? saved.spellInput : "";
+  return { screen, activeIndex, spellInput };
+}
+
+export function saveLearningPageState(state: LearningPageState): void {
+  localStorage.setItem(LEARNING_PAGE_KEY, JSON.stringify(state));
+}
+
+export function clearSavedLearningPageState(): void {
+  localStorage.removeItem(LEARNING_PAGE_KEY);
 }
 
 function openDb(): Promise<IDBDatabase> {
@@ -86,11 +137,24 @@ async function get<T>(storeName: string, key: string): Promise<T | undefined> {
   return value;
 }
 
+async function remove(storeName: string, key: string): Promise<void> {
+  const db = await openDb();
+  await new Promise<void>((resolve, reject) => {
+    const tx = db.transaction(storeName, "readwrite");
+    tx.objectStore(storeName).delete(key);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+  db.close();
+}
+
 export const storage = {
   getLesson: () => get<LessonPack>("lessons", "active"),
   saveLesson: (lesson: LessonPack) => put("lessons", "active", lesson),
+  deleteLesson: () => remove("lessons", "active"),
   getMastery: () => get<MissionMastery>("mastery", "active"),
   saveMastery: (mastery: MissionMastery) => put("mastery", "active", mastery),
   getVideo: () => get<VideoTaskState>("video", "active"),
-  saveVideo: (video: VideoTaskState) => put("video", "active", video)
+  saveVideo: (video: VideoTaskState) => put("video", "active", video),
+  deleteVideo: () => remove("video", "active")
 };

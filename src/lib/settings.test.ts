@@ -1,5 +1,15 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { defaultSettings, loadSettings, saveSettings } from "./storage";
+import {
+  clearSavedLearningPageState,
+  defaultParentControlSettings,
+  defaultSettings,
+  loadLearningPageState,
+  loadParentControlSettings,
+  loadSettings,
+  saveLearningPageState,
+  saveParentControlSettings,
+  saveSettings
+} from "./storage";
 
 describe("app settings", () => {
   beforeEach(() => {
@@ -38,6 +48,62 @@ describe("app settings", () => {
     expect(loadSettings()).toMatchObject({
       apiKey: "agnes-key",
       imageModel: "custom-image-model"
+    });
+  });
+
+  it("loads default parent controls before a password is created", () => {
+    expect(loadParentControlSettings()).toEqual(defaultParentControlSettings);
+  });
+
+  it("persists browser-local parent control settings", () => {
+    saveParentControlSettings({
+      password: "2468",
+      createdAt: 1710000000000
+    });
+
+    expect(loadParentControlSettings()).toEqual({
+      password: "2468",
+      createdAt: 1710000000000
+    });
+  });
+
+  it("persists and reloads the learning page state", () => {
+    saveLearningPageState({
+      screen: "spell",
+      activeIndex: 2,
+      spellInput: "lib"
+    });
+
+    expect(loadLearningPageState()).toEqual({
+      screen: "spell",
+      activeIndex: 2,
+      spellInput: "lib"
+    });
+  });
+
+  it("falls back to home when saved learning page state is malformed", () => {
+    localStorage.setItem("word-planet:learning-page:v1", JSON.stringify({ screen: "settings", activeIndex: -3 }));
+
+    expect(loadLearningPageState()).toEqual({
+      screen: "home",
+      activeIndex: 0,
+      spellInput: ""
+    });
+  });
+
+  it("clears saved learning page state", () => {
+    saveLearningPageState({
+      screen: "game",
+      activeIndex: 1,
+      spellInput: ""
+    });
+
+    clearSavedLearningPageState();
+
+    expect(loadLearningPageState()).toEqual({
+      screen: "home",
+      activeIndex: 0,
+      spellInput: ""
     });
   });
 });

@@ -32,6 +32,19 @@ export type AgnesSettings = {
   videoModel: string;
 };
 
+export type ParentControlSettings = {
+  password: string;
+  createdAt: number | null;
+};
+
+export type LearningScreen = "home" | "learn" | "story" | "game" | "spell" | "reward" | "summary";
+
+export type LearningPageState = {
+  screen: LearningScreen;
+  activeIndex: number;
+  spellInput: string;
+};
+
 export type ChildProfile = {
   nickname: string;
   age: number;

@@ -8,24 +8,24 @@ import {
   ClipboardList,
   Gamepad2,
   Gem,
-  GraduationCap,
-  ImageIcon,
   Info,
+  KeyRound,
   Loader2,
+  LockKeyhole,
   Mic,
   Pencil,
   Play,
   RefreshCcw,
-  Rocket,
-  Settings,
   Sparkles,
   School,
+  ShieldCheck,
   Star,
+  Trash2,
   Trophy,
   Users,
   Volume2
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { selectDailyWords } from "./data/vocabulary";
 import { createAgnesVideoTask, pickArtStyle, pollAgnesVideo, testAgnesConnection, videoRewardPrompt } from "./lib/agnes";
 import { buildAgnesLessonPack, buildSampleLessonPack, getWordImage, TEXT_FREE_ASSET_VERSION } from "./lib/lesson";
@@ -35,27 +35,45 @@ import { buildShuffledLetterTiles } from "./lib/spelling";
 import {
   defaultProfile,
   defaultSettings,
+  loadLearningPageState,
+  loadParentControlSettings,
   loadProfile,
   loadSettings,
+  saveLearningPageState,
+  saveParentControlSettings,
   saveProfile,
   saveSettings,
   storage
 } from "./lib/storage";
-import type { AgnesSettings, ChildProfile, LessonPack, MissionMastery, VideoTaskState, WordEntry } from "./types";
+import type {
+  AgnesSettings,
+  ChildProfile,
+  LearningScreen,
+  LessonPack,
+  MissionMastery,
+  ParentControlSettings,
+  VideoTaskState,
+  WordEntry
+} from "./types";
 
-type Screen = "setup" | "home" | "learn" | "story" | "game" | "spell" | "reward" | "summary";
+type Screen = "setup" | LearningScreen;
 
 const dailyWords = selectDailyWords("school", 5);
 
 function App() {
   const [settings, setSettings] = useState<AgnesSettings>(() => (typeof window === "undefined" ? defaultSettings : loadSettings()));
   const [profile, setProfile] = useState<ChildProfile>(() => (typeof window === "undefined" ? defaultProfile : loadProfile()));
-  const [screen, setScreen] = useState<Screen>("setup");
+  const [parentControls, setParentControls] = useState<ParentControlSettings>(() =>
+    typeof window === "undefined" ? { password: "", createdAt: null } : loadParentControlSettings()
+  );
+  const [parentUnlocked, setParentUnlocked] = useState(false);
+  const [screen, setScreen] = useState<Screen>("home");
   const [pack, setPack] = useState<LessonPack | null>(null);
   const [mastery, setMastery] = useState<MissionMastery>(() => createEmptyMastery(dailyWords.map((word) => word.id)));
   const [video, setVideo] = useState<VideoTaskState>({ status: "idle", progress: 0 });
   const [activeIndex, setActiveIndex] = useState(0);
   const [isGenerating, setGenerating] = useState(false);
+  const [hydrated, setHydrated] = useState(false);
   const [notice, setNotice] = useState("Sample mission is ready. Add an Agnes key when you want generated images and video.");
   const [spellInput, setSpellInput] = useState("");
   const [speechMessage, setSpeechMessage] = useState("");
@@ -78,7 +96,10 @@ function App() {
         if (!active) return;
         if (storedPack?.assetPromptVersion === TEXT_FREE_ASSET_VERSION) {
           setPack(storedPack);
-          setScreen("home");
+          const pageState = loadLearningPageState();
+          setActiveIndex(Math.min(pageState.activeIndex, Math.max(storedPack.words.length - 1, 0)));
+          setSpellInput(pageState.spellInput);
+          setScreen(pageState.screen);
         } else if (storedPack) {
           setNotice("Stored lesson images used an older prompt. Reload the sample or generate a fresh text-free mission.");
         }
@@ -86,6 +107,8 @@ function App() {
         if (storedVideo) setVideo(storedVideo);
       } catch {
         setNotice("Browser storage was unavailable, so this session will use memory only.");
+      } finally {
+        if (active) setHydrated(true);
       }
     }
     hydrate();
@@ -93,6 +116,16 @@ function App() {
       active = false;
     };
   }, []);
+
+  useEffect(() => {
+    if (!hydrated) return;
+    if (screen === "setup") return;
+    saveLearningPageState({
+      screen,
+      activeIndex,
+      spellInput
+    });
+  }, [activeIndex, screen, spellInput]);
 
   function persistSettings(next: AgnesSettings) {
     setSettings(next);
@@ -102,6 +135,11 @@ function App() {
   function persistProfile(next: ChildProfile) {
     setProfile(next);
     saveProfile(next);
+  }
+
+  function persistParentControls(next: ParentControlSettings) {
+    setParentControls(next);
+    saveParentControlSettings(next);
   }
 
   async function persistMastery(next: MissionMastery) {
@@ -132,6 +170,56 @@ function App() {
       setNotice(error instanceof Error ? `${error.message}. Loaded sample mission instead.` : "Loaded sample mission instead.");
     } finally {
       setGenerating(false);
+    }
+  }
+
+  async function regeneratePictures() {
+    setGenerating(true);
+    setNotice(hasApiKey ? "Regenerating cached lesson pictures." : "Refreshing the built-in sample pictures.");
+    try {
+      const nextPack = hasApiKey ? await buildAgnesLessonPack(dailyWords, settings) : buildSampleLessonPack(dailyWords);
+      setPack(nextPack);
+      setActiveIndex((value) => Math.min(value, Math.max(nextPack.words.length - 1, 0)));
+      await storage.saveLesson(nextPack);
+      setNotice(nextPack.source === "agnes" ? "Cached Agnes pictures were regenerated." : "Sample pictures were refreshed.");
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Could not regenerate cached pictures.");
+    } finally {
+      setGenerating(false);
+    }
+  }
+
+  async function deleteCachedPictures() {
+    try {
+      await storage.deleteLesson();
+      setPack(null);
+      setActiveIndex(0);
+      setScreen("home");
+      setNotice("Cached lesson pictures were deleted. The sample mission will stay visible until parents regenerate pictures.");
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Could not delete cached pictures.");
+    }
+  }
+
+  async function deleteCachedVideo() {
+    const idleVideo: VideoTaskState = { status: "idle", progress: 0 };
+    try {
+      await storage.deleteVideo();
+      setVideo(idleVideo);
+      setNotice("Cached reward video was deleted.");
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Could not delete cached video.");
+    }
+  }
+
+  async function refreshCachedMedia() {
+    try {
+      const [storedPack, storedVideo] = await Promise.all([storage.getLesson(), storage.getVideo()]);
+      setPack(storedPack?.assetPromptVersion === TEXT_FREE_ASSET_VERSION ? storedPack : null);
+      setVideo(storedVideo ?? { status: "idle", progress: 0 });
+      setNotice("Cached media status refreshed.");
+    } catch {
+      setNotice("Browser storage was unavailable, so cached media could not be checked.");
     }
   }
 
@@ -217,12 +305,22 @@ function App() {
           <section className="setup-panel">
             <Notice text={notice} />
             {isGenerating && <RequestSpinner label="Working on your mission…" />}
-            <SetupScreen
+            <ParentControlScreen
               settings={settings}
               profile={profile}
+              parentControls={parentControls}
+              unlocked={parentUnlocked}
+              pack={pack}
+              video={video}
               onSettings={persistSettings}
               onProfile={persistProfile}
+              onParentControls={persistParentControls}
+              onUnlock={() => setParentUnlocked(true)}
               onStart={() => startMission(false)}
+              onRegeneratePictures={regeneratePictures}
+              onDeletePictures={deleteCachedPictures}
+              onDeleteVideo={deleteCachedVideo}
+              onRefreshCache={refreshCachedMedia}
               isGenerating={isGenerating}
             />
             <button className="secondary-button setup-back" onClick={() => setScreen("home")}>
@@ -930,22 +1028,45 @@ function TestRow({
   );
 }
 
-function SetupScreen({
+function ParentControlScreen({
   settings,
   profile,
+  parentControls,
+  unlocked,
+  pack,
+  video,
   onSettings,
   onProfile,
+  onParentControls,
+  onUnlock,
   onStart,
+  onRegeneratePictures,
+  onDeletePictures,
+  onDeleteVideo,
+  onRefreshCache,
   isGenerating
 }: {
   settings: AgnesSettings;
   profile: ChildProfile;
+  parentControls: ParentControlSettings;
+  unlocked: boolean;
+  pack: LessonPack | null;
+  video: VideoTaskState;
   onSettings: (settings: AgnesSettings) => void;
   onProfile: (profile: ChildProfile) => void;
+  onParentControls: (settings: ParentControlSettings) => void;
+  onUnlock: () => void;
   onStart: () => void;
+  onRegeneratePictures: () => void;
+  onDeletePictures: () => void;
+  onDeleteVideo: () => void;
+  onRefreshCache: () => void;
   isGenerating: boolean;
 }) {
   const [agnesTest, setAgnesTest] = useState<TestState>({ status: "idle" });
+  const [passwordInput, setPasswordInput] = useState("");
+  const [passwordMessage, setPasswordMessage] = useState("");
+  const hasPassword = parentControls.password.trim().length > 0;
 
   async function runTest(setState: (state: TestState) => void, action: () => Promise<void>) {
     setState({ status: "testing" });
@@ -957,8 +1078,83 @@ function SetupScreen({
     }
   }
 
+  function submitPassword(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const value = passwordInput.trim();
+    if (!value) {
+      setPasswordMessage("Please enter a simple parent password.");
+      return;
+    }
+    if (!hasPassword) {
+      onParentControls({
+        password: value,
+        createdAt: Date.now()
+      });
+      setPasswordInput("");
+      setPasswordMessage("");
+      onUnlock();
+      return;
+    }
+    if (value === parentControls.password) {
+      setPasswordInput("");
+      setPasswordMessage("");
+      onUnlock();
+      return;
+    }
+    setPasswordMessage("Password did not match.");
+  }
+
+  if (!unlocked) {
+    return (
+      <section className="setup-card parent-gate">
+        <div className="parent-gate-icon">
+          <LockKeyhole size={34} />
+        </div>
+        <h2>{hasPassword ? "Parent controls" : "Create parent password"}</h2>
+        <p className="fine-print">
+          {hasPassword
+            ? "Enter the browser-local parent password to manage generated media and Agnes settings."
+            : "Choose a simple browser-local password before opening parent controls."}
+        </p>
+        <form className="parent-password-form" onSubmit={submitPassword}>
+          <label>
+            Password
+            <input
+              type="password"
+              autoComplete={hasPassword ? "current-password" : "new-password"}
+              value={passwordInput}
+              onChange={(event) => setPasswordInput(event.target.value)}
+              placeholder={hasPassword ? "Enter password" : "Create password"}
+            />
+          </label>
+          {passwordMessage && <p className="parent-error">{passwordMessage}</p>}
+          <button className="primary-button" type="submit">
+            <KeyRound size={18} />
+            {hasPassword ? "Unlock" : "Create and unlock"}
+          </button>
+        </form>
+      </section>
+    );
+  }
+
+  const imageCount = pack?.assets.length ?? 0;
+  const storyCount = pack?.storyScenes.length ?? 0;
+  const videoReady = video.status === "completed" && Boolean(video.url);
+
   return (
     <div className="setup-grid">
+      <section className="setup-card parent-status-card">
+        <h2>
+          <ShieldCheck size={24} />
+          Parent controls
+        </h2>
+        <p className="fine-print">Unlocked for this tab only. Refreshing the page locks this area again.</p>
+        <button className="secondary-button" type="button" onClick={onRefreshCache}>
+          <RefreshCcw size={18} />
+          Check cached media
+        </button>
+      </section>
+
       <section className="setup-card">
         <h2>Kid info</h2>
         <label>
@@ -1030,8 +1226,70 @@ function SetupScreen({
         />
         <p className="fine-print">Pronunciation uses your browser's built-in voice.</p>
         <button className="primary-button" onClick={onStart} disabled={isGenerating}>
-          {isGenerating ? "Generating..." : "Start Learning"}
+          {isGenerating ? "Generating..." : "Generate lesson pack"}
           <ArrowRight size={18} />
+        </button>
+      </section>
+
+      <section className="setup-card media-cache-card">
+        <h2>Cached pictures</h2>
+        <div className="cache-stat-grid">
+          <span>
+            <strong>{pack ? "Saved" : "Not saved"}</strong>
+            Lesson pack
+          </span>
+          <span>
+            <strong>{imageCount}</strong>
+            Word pictures
+          </span>
+          <span>
+            <strong>{storyCount}</strong>
+            Story scenes
+          </span>
+          <span>
+            <strong>{pack?.source ?? "sample"}</strong>
+            Source
+          </span>
+        </div>
+        {pack && (
+          <div className="cache-preview-grid" aria-label="Cached picture previews">
+            {pack.assets.slice(0, 5).map((asset) => (
+              <img key={asset.wordId} src={asset.imageUrl} alt={`Cached ${asset.wordId}`} />
+            ))}
+          </div>
+        )}
+        <div className="button-row cache-actions">
+          <button className="primary-button" type="button" onClick={onRegeneratePictures} disabled={isGenerating}>
+            <RefreshCcw size={18} />
+            Regenerate pictures
+          </button>
+          <button className="secondary-button danger-button" type="button" onClick={onDeletePictures} disabled={!pack}>
+            <Trash2 size={18} />
+            Delete pictures
+          </button>
+        </div>
+      </section>
+
+      <section className="setup-card media-cache-card">
+        <h2>Cached video</h2>
+        <div className="cache-stat-grid">
+          <span>
+            <strong>{video.status}</strong>
+            Status
+          </span>
+          <span>
+            <strong>{video.progress}%</strong>
+            Progress
+          </span>
+        </div>
+        {video.url ? (
+          <video controls src={video.url} />
+        ) : (
+          <div className="video-cache-empty">{video.error ?? "No cached reward video URL."}</div>
+        )}
+        <button className="secondary-button danger-button" type="button" onClick={onDeleteVideo} disabled={!videoReady && video.status === "idle"}>
+          <Trash2 size={18} />
+          Delete video
         </button>
       </section>
     </div>
