@@ -64,6 +64,9 @@ export type ChildProfile = {
 
 export type LessonAsset = {
   wordId: string;
+  // Raw bytes — persisted in IndexedDB so the cache survives Agnes CDN expiry.
+  imageBlob: Blob;
+  // Transient object URL rebuilt from imageBlob on hydration; not persisted.
   imageUrl: string;
   source: "agnes" | "sample";
 };
@@ -73,6 +76,9 @@ export type StoryScene = {
   title: string;
   text: string;
   textZh: string;
+  // Raw bytes — persisted; see LessonAsset.imageBlob.
+  imageBlob: Blob;
+  // Transient object URL rebuilt from imageBlob on hydration; not persisted.
   imageUrl: string;
 };
 
@@ -102,6 +108,10 @@ export type VideoTaskState = {
   taskId?: string;
   status: "idle" | "queued" | "running" | "completed" | "failed";
   progress: number;
+  // Raw bytes of the completed video — persisted so the cache survives Agnes
+  // CDN expiry. Absent while queued/running and on sample/error states.
+  blob?: Blob;
+  // Transient object URL rebuilt from blob on hydration; not persisted.
   url?: string;
   error?: string;
 };

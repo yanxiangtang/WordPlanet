@@ -17,17 +17,32 @@ import {
   Play,
   RefreshCcw,
   Sparkles,
-  ShieldCheck,
   Star,
   Trash2,
   Trophy,
   Users,
-  Volume2
+  Volume2,
+  X
 } from "lucide-react";
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { getVocabularySet, listVocabularySets, selectMissionWords } from "./data/vocabulary";
-import { createAgnesVideoTask, pickArtStyle, pollAgnesVideo, testAgnesConnection, videoRewardPrompt } from "./lib/agnes";
-import { buildAgnesLessonPack, buildSampleLessonPack, getWordImage, TEXT_FREE_ASSET_VERSION } from "./lib/lesson";
+import {
+  blobToDataUri,
+  createAgnesVideoTask,
+  fetchAgnesVideoBlob,
+  pickArtStyle,
+  pollAgnesVideo,
+  testAgnesConnection,
+  videoRewardPrompt
+} from "./lib/agnes";
+import {
+  buildAgnesLessonPack,
+  buildSampleLessonPack,
+  collectObjectUrls,
+  getWordImage,
+  TEXT_FREE_ASSET_VERSION,
+  withObjectUrls
+} from "./lib/lesson";
 import { createEmptyMastery, isMissionComplete, laneProgress, recordMasteryResult } from "./lib/mastery";
 import { listenForWord, speak, speechRecognitionSupported } from "./lib/speech";
 import { buildShuffledLetterTiles } from "./lib/spelling";
@@ -62,6 +77,12 @@ import type {
 } from "./types";
 
 type Screen = "setup" | LearningScreen;
+
+// Wait a fixed number of milliseconds; used to pace the parent-side video
+// regeneration poll loop so we don't hammer Agnes' status endpoint.
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 // Clamp a stored selection to a set/book that still exists (vocabulary JSON
 // files can change), falling back to the first available set/book.
@@ -104,6 +125,30 @@ function App() {
   const [notice, setNotice] = useState("Sample mission is ready. Add an Agnes key when you want generated images and video.");
   const [spellInput, setSpellInput] = useState("");
   const [speechMessage, setSpeechMessage] = useState("");
+  const [isVideoBusy, setIsVideoBusy] = useState(false);
+
+  // Object URLs for cached image/video Blobs are minted here so we can revoke
+  // them in one place. Every code path that swaps `pack` or replaces the video
+  // blob must route through replacePackUrls / replaceVideoUrl — otherwise the
+  // old URLs leak until page unload (each one is GC-rooted by the browser).
+  const objectUrlsRef = useRef<string[]>([]);
+  const videoUrlRef = useRef<string | null>(null);
+  const videoPollRef = useRef<{ cancelled: boolean } | null>(null);
+
+  function replacePackUrls(nextPack: LessonPack | null) {
+    for (const url of objectUrlsRef.current) URL.revokeObjectURL(url);
+    objectUrlsRef.current = nextPack ? collectObjectUrls(nextPack) : [];
+  }
+
+  function replaceVideoUrl(nextUrl: string | null) {
+    if (videoUrlRef.current) URL.revokeObjectURL(videoUrlRef.current);
+    videoUrlRef.current = nextUrl;
+  }
+
+  function cancelVideoPoll() {
+    if (videoPollRef.current) videoPollRef.current.cancelled = true;
+    videoPollRef.current = null;
+  }
 
   const activeWord = pack?.words[activeIndex] ?? missionWords[activeIndex];
   const dashboardPack = pack ?? buildSampleLessonPack(missionWords, lessonMeta);
@@ -122,16 +167,26 @@ function App() {
         ]);
         if (!active) return;
         if (storedPack?.assetPromptVersion === TEXT_FREE_ASSET_VERSION) {
-          setPack(storedPack);
+          const hydrated = withObjectUrls(storedPack);
+          replacePackUrls(hydrated);
+          setPack(hydrated);
           const pageState = loadLearningPageState();
-          setActiveIndex(Math.min(pageState.activeIndex, Math.max(storedPack.words.length - 1, 0)));
+          setActiveIndex(Math.min(pageState.activeIndex, Math.max(hydrated.words.length - 1, 0)));
           setSpellInput(pageState.spellInput);
           setScreen(pageState.screen);
         } else if (storedPack) {
           setNotice("Stored lesson images used an older prompt. Reload the sample or generate a fresh text-free mission.");
         }
         if (storedMastery) setMastery(storedMastery);
-        if (storedVideo) setVideo(storedVideo);
+        if (storedVideo) {
+          if (storedVideo.blob) {
+            const objUrl = URL.createObjectURL(storedVideo.blob);
+            replaceVideoUrl(objUrl);
+            setVideo({ ...storedVideo, url: objUrl });
+          } else {
+            setVideo(storedVideo);
+          }
+        }
       } catch {
         setNotice("Browser storage was unavailable, so this session will use memory only.");
       } finally {
@@ -143,6 +198,18 @@ function App() {
       active = false;
     };
   }, []);
+
+  // Revoke every cached-media object URL when the app unmounts. The body runs
+  // once thanks to the empty dep array; running it inside the hydration effect
+  // would revoke URLs on Strict-Mode double-invokes and break image rendering.
+  useEffect(
+    () => () => {
+      replacePackUrls(null);
+      replaceVideoUrl(null);
+      cancelVideoPoll();
+    },
+    []
+  );
 
   useEffect(() => {
     if (!hydrated) return;
@@ -160,12 +227,16 @@ function App() {
   // whatever screen they are on — typically the settings screen.
   useEffect(() => {
     if (!hydrated) return;
+    cancelVideoPoll();
+    replacePackUrls(null);
+    replaceVideoUrl(null);
     setPack(null);
     setActiveIndex(0);
     setMastery(createEmptyMastery(missionWords.map((word) => word.id)));
     setVideo({ status: "idle", progress: 0 });
     clearSavedLearningPageState();
     storage.deleteLesson().catch(() => {});
+    storage.deleteVideo().catch(() => {});
     setNotice("Vocabulary updated. A fresh mission is ready — generate pictures when you like.");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [missionWords]);
@@ -197,12 +268,16 @@ function App() {
   }
 
   async function startMission(forceSample = false) {
+    if (isGenerating) return;
     setGenerating(true);
+    cancelVideoPoll();
     setNotice(forceSample || !hasApiKey ? "Loading the built-in sample mission." : "Asking Agnes to generate your lesson images.");
     try {
       const nextPack =
         hasApiKey && !forceSample ? await buildAgnesLessonPack(missionWords, settings, lessonMeta) : buildSampleLessonPack(missionWords, lessonMeta);
       const nextMastery = createEmptyMastery(nextPack.words.map((word) => word.id));
+      replacePackUrls(nextPack);
+      replaceVideoUrl(null);
       setPack(nextPack);
       setMastery(nextMastery);
       setVideo({ status: "idle", progress: 0 });
@@ -212,6 +287,7 @@ function App() {
       setNotice(nextPack.source === "agnes" ? "Agnes lesson pack saved in this browser." : "Sample mission saved in this browser.");
     } catch (error) {
       const fallback = buildSampleLessonPack(missionWords, lessonMeta);
+      replacePackUrls(fallback);
       setPack(fallback);
       setMastery(createEmptyMastery(fallback.words.map((word) => word.id)));
       setScreen("home");
@@ -223,10 +299,12 @@ function App() {
   }
 
   async function regeneratePictures() {
+    if (isGenerating) return;
     setGenerating(true);
     setNotice(hasApiKey ? "Regenerating cached lesson pictures." : "Refreshing the built-in sample pictures.");
     try {
       const nextPack = hasApiKey ? await buildAgnesLessonPack(missionWords, settings, lessonMeta) : buildSampleLessonPack(missionWords, lessonMeta);
+      replacePackUrls(nextPack);
       setPack(nextPack);
       setActiveIndex((value) => Math.min(value, Math.max(nextPack.words.length - 1, 0)));
       await storage.saveLesson(nextPack);
@@ -241,6 +319,7 @@ function App() {
   async function deleteCachedPictures() {
     try {
       await storage.deleteLesson();
+      replacePackUrls(null);
       setPack(null);
       setActiveIndex(0);
       setScreen("home");
@@ -253,22 +332,14 @@ function App() {
   async function deleteCachedVideo() {
     const idleVideo: VideoTaskState = { status: "idle", progress: 0 };
     try {
+      cancelVideoPoll();
       await storage.deleteVideo();
+      replaceVideoUrl(null);
       setVideo(idleVideo);
+      setIsVideoBusy(false);
       setNotice("Cached reward video was deleted.");
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "Could not delete cached video.");
-    }
-  }
-
-  async function refreshCachedMedia() {
-    try {
-      const [storedPack, storedVideo] = await Promise.all([storage.getLesson(), storage.getVideo()]);
-      setPack(storedPack?.assetPromptVersion === TEXT_FREE_ASSET_VERSION ? storedPack : null);
-      setVideo(storedVideo ?? { status: "idle", progress: 0 });
-      setNotice("Cached media status refreshed.");
-    } catch {
-      setNotice("Browser storage was unavailable, so cached media could not be checked.");
     }
   }
 
@@ -316,7 +387,12 @@ function App() {
 
     try {
       const style = pickArtStyle(pack.words.map((word) => word.id).join("-"));
-      const task = await createAgnesVideoTask(settings, videoRewardPrompt(pack, style), pack.assets[0]?.imageUrl);
+      // Agnes expects the seed image as a data URI string — blob: URLs are
+      // tab-scoped and won't fetch over HTTP. Re-encode the cached Blob.
+      const seedDataUri = pack.assets[0]?.imageBlob
+        ? await blobToDataUri(pack.assets[0].imageBlob)
+        : undefined;
+      const task = await createAgnesVideoTask(settings, videoRewardPrompt(pack, style), seedDataUri);
       setVideo(task);
       await storage.saveVideo(task);
       setNotice("Video reward task created. You can poll while Agnes works.");
@@ -335,8 +411,19 @@ function App() {
     if (!video.videoId) return;
     try {
       const next = await pollAgnesVideo(settings, video.videoId);
-      setVideo(next);
-      await storage.saveVideo(next);
+      if (next.status === "completed" && next.url) {
+        // Capture the bytes before Agnes' CDN URL rotates — without this the
+        // cached entry would 404 the next time the kid opens the reward.
+        const blob = await fetchAgnesVideoBlob(next.url);
+        const objUrl = URL.createObjectURL(blob);
+        replaceVideoUrl(objUrl);
+        const final: VideoTaskState = { ...next, blob, url: objUrl };
+        setVideo(final);
+        await storage.saveVideo(final);
+      } else {
+        setVideo(next);
+        await storage.saveVideo(next);
+      }
     } catch (error) {
       setVideo({
         ...video,
@@ -346,14 +433,89 @@ function App() {
     }
   }
 
+  // Parent-side auto-polling variant: creates a fresh video task and walks the
+  // Agnes status endpoint until it completes or fails, downloading the bytes
+  // on success. Cancellation tokens unwind cleanly when the parent deletes the
+  // video, switches vocabulary, or unmounts the app mid-poll.
+  async function regenerateVideo() {
+    if (!pack || isVideoBusy) return;
+    if (!hasApiKey) {
+      setNotice("Add an Agnes API key to generate a reward video.");
+      return;
+    }
+
+    cancelVideoPoll();
+    const token = { cancelled: false };
+    videoPollRef.current = token;
+    setIsVideoBusy(true);
+
+    try {
+      setNotice("Asking Agnes to generate the reward video…");
+      const style = pickArtStyle(pack.words.map((word) => word.id).join("-"));
+      const seedDataUri = pack.assets[0]?.imageBlob
+        ? await blobToDataUri(pack.assets[0].imageBlob)
+        : undefined;
+      const task = await createAgnesVideoTask(settings, videoRewardPrompt(pack, style), seedDataUri);
+      if (token.cancelled) return;
+
+      const queued: VideoTaskState = { ...task, blob: undefined, url: undefined };
+      setVideo(queued);
+      await storage.saveVideo(queued);
+
+      const videoId = task.videoId;
+      if (!videoId) throw new Error("Agnes did not return a video id.");
+
+      // Poll every ~5s. Each loop body checks the cancellation flag after each
+      // await so a Delete or vocab-change interrupts within one tick.
+      while (!token.cancelled) {
+        await sleep(5000);
+        if (token.cancelled) return;
+        const next = await pollAgnesVideo(settings, videoId);
+        if (token.cancelled) return;
+
+        if (next.status === "completed" && next.url) {
+          setNotice("Downloading reward video…");
+          const blob = await fetchAgnesVideoBlob(next.url);
+          if (token.cancelled) return;
+          const objUrl = URL.createObjectURL(blob);
+          replaceVideoUrl(objUrl);
+          const final: VideoTaskState = { ...next, blob, url: objUrl };
+          setVideo(final);
+          await storage.saveVideo(final);
+          setNotice("Reward video cached.");
+          return;
+        }
+        if (next.status === "failed") {
+          setVideo(next);
+          await storage.saveVideo(next);
+          setNotice(next.error ?? "Reward video generation failed.");
+          return;
+        }
+        // Still queued/running — surface progress without keeping a stale URL.
+        setVideo({ ...next, blob: undefined, url: undefined });
+      }
+    } catch (error) {
+      if (!token.cancelled) {
+        const message = error instanceof Error ? error.message : "Reward video failed.";
+        setVideo((prev) => ({ ...prev, status: "failed", progress: prev.progress ?? 0, error: message }));
+        setNotice(message);
+      }
+    } finally {
+      if (videoPollRef.current === token) videoPollRef.current = null;
+      setIsVideoBusy(false);
+    }
+  }
+
   return (
     <div className={`app-shell theme-${profile.gender}`}>
       <TopBar profile={profile} missionTitle={missionTitle} onSetup={() => setScreen("setup")} />
       <main className="main-stage">
         {screen === "setup" ? (
           <section className="setup-panel">
-            <Notice text={notice} />
-            {isGenerating && <RequestSpinner label="Working on your mission…" />}
+            <div className="setup-status-row">
+              <Notice text={notice} />
+              {isGenerating && <RequestSpinner label="Working on your mission…" />}
+            </div>
             <ParentControlScreen
               settings={settings}
               profile={profile}
@@ -372,8 +534,9 @@ function App() {
               onRegeneratePictures={regeneratePictures}
               onDeletePictures={deleteCachedPictures}
               onDeleteVideo={deleteCachedVideo}
-              onRefreshCache={refreshCachedMedia}
+              onRegenerateVideo={regenerateVideo}
               isGenerating={isGenerating}
+              isVideoBusy={isVideoBusy}
             />
             <button className="secondary-button setup-back" onClick={() => setScreen("home")}>
               Back to Mission
@@ -1050,23 +1213,32 @@ type TestState = { status: "idle" | "testing" | "ok" | "error"; message?: string
 function TestRow({
   label,
   state,
+  busy = false,
   disabled,
   onTest
 }: {
   label: string;
   state: TestState;
+  busy?: boolean;
   disabled: boolean;
   onTest: () => void;
 }) {
+  const testing = state.status === "testing";
+  const unavailable = disabled;
+  const working = busy || testing;
   return (
     <div className="test-row">
       <button
-        className="secondary-button test-button"
+        className={`secondary-button test-button ${working ? "busy-button" : ""}`}
         type="button"
-        onClick={onTest}
-        disabled={disabled || state.status === "testing"}
+        onClick={() => {
+          if (!unavailable && !working) onTest();
+        }}
+        disabled={unavailable}
+        aria-disabled={working || unavailable}
+        data-busy={working ? "true" : undefined}
       >
-        {state.status === "testing" ? <Loader2 size={16} className="spin" /> : <Play size={16} />}
+        {working ? <Loader2 size={16} className="spin" /> : <Play size={16} />}
         {label}
       </button>
       {state.status === "ok" && (
@@ -1080,7 +1252,20 @@ function TestRow({
   );
 }
 
-function ParentControlScreen({
+type MediaViewerState =
+  | {
+      type: "image";
+      title: string;
+      src: string;
+      alt: string;
+    }
+  | {
+      type: "video";
+      title: string;
+      src: string;
+    };
+
+export function ParentControlScreen({
   settings,
   profile,
   parentControls,
@@ -1098,8 +1283,9 @@ function ParentControlScreen({
   onRegeneratePictures,
   onDeletePictures,
   onDeleteVideo,
-  onRefreshCache,
-  isGenerating
+  onRegenerateVideo,
+  isGenerating,
+  isVideoBusy
 }: {
   settings: AgnesSettings;
   profile: ChildProfile;
@@ -1118,12 +1304,14 @@ function ParentControlScreen({
   onRegeneratePictures: () => void;
   onDeletePictures: () => void;
   onDeleteVideo: () => void;
-  onRefreshCache: () => void;
+  onRegenerateVideo: () => void;
   isGenerating: boolean;
+  isVideoBusy: boolean;
 }) {
   const [agnesTest, setAgnesTest] = useState<TestState>({ status: "idle" });
   const [passwordInput, setPasswordInput] = useState("");
   const [passwordMessage, setPasswordMessage] = useState("");
+  const [mediaViewer, setMediaViewer] = useState<MediaViewerState | null>(null);
   const hasPassword = parentControls.password.trim().length > 0;
 
   async function runTest(setState: (state: TestState) => void, action: () => Promise<void>) {
@@ -1198,21 +1386,29 @@ function ParentControlScreen({
   const imageCount = pack?.assets.length ?? 0;
   const storyCount = pack?.storyScenes.length ?? 0;
   const videoReady = video.status === "completed" && Boolean(video.url);
+  const cachedPictures = pack
+    ? [
+        ...pack.assets.map((asset) => {
+          const word = pack.words.find((item) => item.id === asset.wordId);
+          const label = word?.word ?? asset.wordId;
+          return {
+            id: `word-${asset.wordId}`,
+            title: label,
+            src: asset.imageUrl,
+            alt: `Cached picture for ${label}`
+          };
+        }),
+        ...pack.storyScenes.map((scene) => ({
+          id: `story-${scene.id}`,
+          title: scene.title,
+          src: scene.imageUrl,
+          alt: `Cached story scene ${scene.title}`
+        }))
+      ]
+    : [];
 
   return (
     <div className="setup-grid">
-      <section className="setup-card parent-status-card">
-        <h2>
-          <ShieldCheck size={24} />
-          Parent controls
-        </h2>
-        <p className="fine-print">Unlocked for this tab only. Refreshing the page locks this area again.</p>
-        <button className="secondary-button" type="button" onClick={onRefreshCache}>
-          <RefreshCcw size={18} />
-          Check cached media
-        </button>
-      </section>
-
       <section className="setup-card">
         <h2>Kid info</h2>
         <label>
@@ -1330,11 +1526,19 @@ function ParentControlScreen({
         <TestRow
           label="Test Agnes connection"
           state={agnesTest}
-          disabled={isGenerating || !settings.apiKey.trim()}
+          busy={isGenerating}
+          disabled={!settings.apiKey.trim()}
           onTest={() => runTest(setAgnesTest, () => testAgnesConnection(settings))}
         />
         <p className="fine-print">Pronunciation uses your browser's built-in voice.</p>
-        <button className="primary-button" onClick={onStart} disabled={isGenerating}>
+        <button
+          className={`primary-button ${isGenerating ? "busy-button" : ""}`}
+          onClick={() => {
+            if (!isGenerating) onStart();
+          }}
+          aria-disabled={isGenerating}
+          data-busy={isGenerating ? "true" : undefined}
+        >
           {isGenerating ? "Generating..." : "Generate lesson pack"}
           <ArrowRight size={18} />
         </button>
@@ -1360,15 +1564,31 @@ function ParentControlScreen({
             Source
           </span>
         </div>
-        {pack && (
+        {cachedPictures.length > 0 && (
           <div className="cache-preview-grid" aria-label="Cached picture previews">
-            {pack.assets.slice(0, 5).map((asset) => (
-              <img key={asset.wordId} src={asset.imageUrl} alt={`Cached ${asset.wordId}`} />
+            {cachedPictures.map((picture) => (
+              <button
+                className="cache-preview-button"
+                key={picture.id}
+                type="button"
+                onClick={() => setMediaViewer({ type: "image", title: picture.title, src: picture.src, alt: picture.alt })}
+              >
+                <img src={picture.src} alt={picture.alt} />
+                <span>{picture.title}</span>
+              </button>
             ))}
           </div>
         )}
         <div className="button-row cache-actions">
-          <button className="primary-button" type="button" onClick={onRegeneratePictures} disabled={isGenerating}>
+          <button
+            className={`primary-button ${isGenerating ? "busy-button" : ""}`}
+            type="button"
+            onClick={() => {
+              if (!isGenerating) onRegeneratePictures();
+            }}
+            aria-disabled={isGenerating}
+            data-busy={isGenerating ? "true" : undefined}
+          >
             <RefreshCcw size={18} />
             Regenerate pictures
           </button>
@@ -1392,15 +1612,76 @@ function ParentControlScreen({
           </span>
         </div>
         {video.url ? (
-          <video controls src={video.url} />
+          <div className="video-cache-preview">
+            <video controls src={video.url} />
+            <button
+              className="secondary-button video-open-button"
+              type="button"
+              onClick={() => setMediaViewer({ type: "video", title: "Cached reward video", src: video.url ?? "" })}
+            >
+              <Play size={18} />
+              Open video
+            </button>
+          </div>
         ) : (
-          <div className="video-cache-empty">{video.error ?? "No cached reward video URL."}</div>
+          <div className="video-cache-empty">{video.error ?? "No cached reward video yet."}</div>
         )}
-        <button className="secondary-button danger-button" type="button" onClick={onDeleteVideo} disabled={!videoReady && video.status === "idle"}>
-          <Trash2 size={18} />
-          Delete video
-        </button>
+        {isVideoBusy && (
+          <progress
+            className="video-progress"
+            max={100}
+            value={video.progress}
+            aria-label="Reward video generation progress"
+          />
+        )}
+        <div className="button-row cache-actions">
+          <button
+            className={`primary-button ${isVideoBusy ? "busy-button" : ""}`}
+            type="button"
+            onClick={() => {
+              if (!isVideoBusy) onRegenerateVideo();
+            }}
+            aria-disabled={isVideoBusy}
+            data-busy={isVideoBusy ? "true" : undefined}
+            disabled={!pack || !settings.apiKey.trim()}
+          >
+            <RefreshCcw size={18} />
+            {isVideoBusy ? "Regenerating..." : "Regenerate video"}
+          </button>
+          <button
+            className="secondary-button danger-button"
+            type="button"
+            onClick={onDeleteVideo}
+            disabled={isVideoBusy || (!videoReady && video.status === "idle")}
+          >
+            <Trash2 size={18} />
+            Delete video
+          </button>
+        </div>
       </section>
+      {mediaViewer && (
+        <div className="media-viewer-backdrop" role="presentation" onClick={() => setMediaViewer(null)}>
+          <section
+            className="media-viewer"
+            role="dialog"
+            aria-modal="true"
+            aria-label={mediaViewer.title}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="media-viewer-header">
+              <h2>{mediaViewer.title}</h2>
+              <button className="media-viewer-close" type="button" aria-label="Close media viewer" onClick={() => setMediaViewer(null)}>
+                <X size={20} />
+              </button>
+            </div>
+            {mediaViewer.type === "image" ? (
+              <img src={mediaViewer.src} alt={mediaViewer.alt} />
+            ) : (
+              <video controls autoPlay src={mediaViewer.src} />
+            )}
+          </section>
+        </div>
+      )}
     </div>
   );
 }
@@ -1430,11 +1711,25 @@ function HomeScreen({
         ))}
       </div>
       <div className="button-row">
-        <button className="primary-button" onClick={pack ? onBegin : onGenerate} disabled={isGenerating}>
+        <button
+          className={`primary-button ${isGenerating ? "busy-button" : ""}`}
+          onClick={() => {
+            if (!isGenerating) (pack ? onBegin : onGenerate)();
+          }}
+          aria-disabled={isGenerating}
+          data-busy={isGenerating ? "true" : undefined}
+        >
           {pack ? "Start Adventure" : isGenerating ? "Generating..." : "Generate Lesson Pack"}
           <ArrowRight size={18} />
         </button>
-        <button className="secondary-button" onClick={onSample} disabled={isGenerating}>
+        <button
+          className={`secondary-button ${isGenerating ? "busy-button" : ""}`}
+          onClick={() => {
+            if (!isGenerating) onSample();
+          }}
+          aria-disabled={isGenerating}
+          data-busy={isGenerating ? "true" : undefined}
+        >
           Use Sample Mission
         </button>
       </div>

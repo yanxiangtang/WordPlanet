@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  base64ToBlob,
   buildAgnesConnectionTestRequest,
   buildImageGenerationRequest,
   buildVideoTaskRequest,
@@ -69,5 +70,23 @@ describe("Agnes API helpers", () => {
     expect(prompt).toMatch(/Do not write the English word/i);
     expect(prompt).toMatch(/no readable text/i);
     expect(prompt).toMatch(/letters, captions, labels, signs/i);
+  });
+
+  it("decodes base64 strings into Blobs with the requested MIME type", async () => {
+    // "WordPlanet" as raw bytes — round-trip via base64 to confirm we get the
+    // same bytes back without the ~33% inflation a data URI string would carry.
+    const original = new TextEncoder().encode("WordPlanet");
+    const b64 = btoa(String.fromCharCode(...original));
+    const blob = base64ToBlob(b64, "image/png");
+
+    expect(blob).toBeInstanceOf(Blob);
+    expect(blob.type).toBe("image/png");
+    expect(blob.size).toBe(original.byteLength);
+
+    const buffer = await blob.arrayBuffer();
+    // Compare as plain arrays — under jsdom's Blob polyfill the ArrayBuffer
+    // can come from a different realm, which trips Vitest's strict-prototype
+    // toEqual on typed arrays.
+    expect(Array.from(new Uint8Array(buffer))).toEqual(Array.from(original));
   });
 });

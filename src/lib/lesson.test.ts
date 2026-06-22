@@ -4,6 +4,10 @@ import { buildSampleLessonPack } from "./lesson";
 
 const META = { setId: "yilin-grade3", title: "译林版三年级上册" };
 
+async function readSvg(blob: Blob): Promise<string> {
+  return new TextDecoder().decode(await blob.arrayBuffer());
+}
+
 describe("lesson pack generation", () => {
   it("builds a playable sample pack with assets and story scenes", () => {
     const words = selectMissionWords("yilin-grade3", "3A", 5);
@@ -15,15 +19,20 @@ describe("lesson pack generation", () => {
     expect(pack.words).toHaveLength(5);
     expect(pack.assets).toHaveLength(5);
     expect(pack.storyScenes.length).toBeGreaterThanOrEqual(3);
-    expect(pack.assets.every((asset) => asset.imageUrl.startsWith("data:image/svg+xml"))).toBe(true);
+    expect(pack.assets.every((asset) => asset.imageBlob instanceof Blob)).toBe(true);
+    expect(pack.assets.every((asset) => asset.imageBlob.type === "image/svg+xml")).toBe(true);
+    // Object URLs are minted by withObjectUrls; the exact prefix depends on
+    // the host (jsdom stub vs real browser), but they are non-empty strings.
+    expect(pack.assets.every((asset) => asset.imageUrl.length > 0)).toBe(true);
   });
 
-  it("keeps sample word images text-free for picture selection", () => {
+  it("keeps sample word images text-free for picture selection", async () => {
     const words = selectMissionWords("yilin-grade3", "3A", 5);
     const pack = buildSampleLessonPack(words, META);
     const firstWord = getBookWords("yilin-grade3", "3A")[0];
-    const image = pack.assets.find((asset) => asset.wordId === firstWord.id)?.imageUrl ?? "";
-    const decoded = decodeURIComponent(image);
+    const blob = pack.assets.find((asset) => asset.wordId === firstWord.id)?.imageBlob;
+    expect(blob).toBeInstanceOf(Blob);
+    const decoded = await readSvg(blob as Blob);
 
     expect(decoded).not.toContain(firstWord.word);
     expect(decoded).not.toContain(firstWord.meaningZh);

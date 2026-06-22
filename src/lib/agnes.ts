@@ -118,7 +118,7 @@ export function videoRewardPrompt(pack: LessonPack, style: string = CHILD_ART_ST
   ].join(" ");
 }
 
-export async function requestAgnesImage(settings: AgnesSettings, prompt: string): Promise<string> {
+export async function requestAgnesImage(settings: AgnesSettings, prompt: string): Promise<Blob> {
   const response = await fetch(`${normalizeAgnesBaseUrl(settings.baseUrl)}/v1/images/generations`, {
     method: "POST",
     headers: {
@@ -141,9 +141,43 @@ export async function requestAgnesImage(settings: AgnesSettings, prompt: string)
 
   const payload = (await response.json()) as { data?: Array<{ b64_json?: string | null; url?: string | null }> };
   const first = payload.data?.[0];
-  if (first?.b64_json) return `data:image/png;base64,${first.b64_json}`;
-  if (first?.url) return first.url;
+  if (first?.b64_json) return base64ToBlob(first.b64_json, "image/png");
+  if (first?.url) {
+    const imageResponse = await fetch(first.url);
+    if (!imageResponse.ok) throw new Error(`Agnes image download failed: ${imageResponse.status}`);
+    return await imageResponse.blob();
+  }
   throw new Error("Agnes image response did not include an image");
+}
+
+// Decode a base64 string to a typed Blob without going through a data URI.
+// Storing the bytes directly avoids the ~33% inflation a base64 string carries
+// and keeps large media off the JS string heap.
+export function base64ToBlob(b64: string, mime: string): Blob {
+  const binary = atob(b64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+  return new Blob([bytes], { type: mime });
+}
+
+// Download the completed Agnes video so we can cache the bytes instead of just
+// the CDN URL (which rotates and would otherwise leave a broken <video src>).
+export async function fetchAgnesVideoBlob(url: string): Promise<Blob> {
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`Agnes video download failed: ${response.status}`);
+  return await response.blob();
+}
+
+// Read a Blob into a data URI for endpoints (like Agnes video creation) that
+// accept an `image` string seed. Object URLs (`blob:…`) can't leave the tab,
+// so a data URI is what we send across.
+export function blobToDataUri(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = () => reject(reader.error ?? new Error("Could not read blob"));
+    reader.readAsDataURL(blob);
+  });
 }
 
 export async function createAgnesVideoTask(

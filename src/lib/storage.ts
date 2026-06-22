@@ -16,7 +16,7 @@ const PARENT_CONTROLS_KEY = "word-planet:parent-controls:v1";
 const LEARNING_PAGE_KEY = "word-planet:learning-page:v1";
 const VOCAB_SELECTION_KEY = "word-planet:vocabulary-selection:v1";
 const DB_NAME = "word-planet";
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 const RESTORABLE_SCREENS = new Set<LearningScreen>(["home", "learn", "story", "game", "spell", "reward", "summary"]);
 const WORDS_PER_MISSION_OPTIONS = [5, 8, 10];
 
@@ -128,10 +128,23 @@ export function saveVocabularySelection(selection: VocabularySelection): void {
 function openDb(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     const request = indexedDB.open(DB_NAME, DB_VERSION);
-    request.onupgradeneeded = () => {
+    request.onupgradeneeded = (event) => {
       const db = request.result;
+      const tx = request.transaction;
       for (const store of ["lessons", "mastery", "video"]) {
         if (!db.objectStoreNames.contains(store)) db.createObjectStore(store);
+      }
+      // v1 -> v2: previous records held base64 data URI strings / Agnes CDN
+      // URLs. Both schemas are incompatible with the new Blob-backed format,
+      // so drop them — fresh records will be regenerated on demand.
+      if (event.oldVersion < 2 && tx) {
+        for (const store of ["lessons", "video"]) {
+          try {
+            tx.objectStore(store).clear();
+          } catch {
+            // Store was just created above; nothing to clear.
+          }
+        }
       }
     };
     request.onsuccess = () => resolve(request.result);
@@ -173,13 +186,30 @@ async function remove(storeName: string, key: string): Promise<void> {
   db.close();
 }
 
+// Strip transient object-URL fields so only persistent Blob bytes are stored.
+// Object URLs (`blob:…`) are tab-scoped and meaningless across reloads, and
+// would also waste space in the IDB record.
+function stripLessonObjectUrls(lesson: LessonPack): LessonPack {
+  return {
+    ...lesson,
+    assets: lesson.assets.map((asset) => ({ ...asset, imageUrl: "" })),
+    storyScenes: lesson.storyScenes.map((scene) => ({ ...scene, imageUrl: "" }))
+  };
+}
+
+function stripVideoObjectUrl(video: VideoTaskState): VideoTaskState {
+  if (video.url === undefined) return video;
+  const { url: _stripped, ...rest } = video;
+  return rest;
+}
+
 export const storage = {
   getLesson: () => get<LessonPack>("lessons", "active"),
-  saveLesson: (lesson: LessonPack) => put("lessons", "active", lesson),
+  saveLesson: (lesson: LessonPack) => put("lessons", "active", stripLessonObjectUrls(lesson)),
   deleteLesson: () => remove("lessons", "active"),
   getMastery: () => get<MissionMastery>("mastery", "active"),
   saveMastery: (mastery: MissionMastery) => put("mastery", "active", mastery),
   getVideo: () => get<VideoTaskState>("video", "active"),
-  saveVideo: (video: VideoTaskState) => put("video", "active", video),
+  saveVideo: (video: VideoTaskState) => put("video", "active", stripVideoObjectUrl(video)),
   deleteVideo: () => remove("video", "active")
 };
