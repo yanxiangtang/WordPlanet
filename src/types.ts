@@ -1,13 +1,3 @@
-export type PlanetTopic =
-  | "school"
-  | "animals"
-  | "food"
-  | "weather"
-  | "actions"
-  | "family"
-  | "body"
-  | "emotions";
-
 export type WordLevel = "A1 Movers" | "A2 Flyers" | "A2 Key";
 
 export type MasteryLane = "meaning" | "say" | "write";
@@ -16,13 +6,32 @@ export type WordEntry = {
   id: string;
   word: string;
   meaningZh: string;
-  topic: PlanetTopic;
+  topic: string;
   level: WordLevel;
   example: string;
   exampleZh: string;
   imagePromptHint: string;
   spellingDifficulty: "easy" | "medium" | "tricky";
   pronunciationNote: string;
+};
+
+export type VocabularyBook = {
+  id: string;
+  name: string;
+  wordCount: number;
+};
+
+export type VocabularySet = {
+  id: string;
+  name: string;
+  description?: string;
+  books: VocabularyBook[];
+};
+
+export type VocabularySelection = {
+  setId: string;
+  bookId: string;
+  wordsPerMission: number;
 };
 
 export type AgnesSettings = {
@@ -69,7 +78,7 @@ export type StoryScene = {
 
 export type LessonPack = {
   id: string;
-  topic: PlanetTopic;
+  topic: string;
   title: string;
   createdAt: number;
   assetPromptVersion: number;

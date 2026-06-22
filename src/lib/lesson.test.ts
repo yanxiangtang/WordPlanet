@@ -1,13 +1,17 @@
 import { describe, expect, it } from "vitest";
-import { selectDailyWords } from "../data/vocabulary";
+import { getBookWords, selectMissionWords } from "../data/vocabulary";
 import { buildSampleLessonPack } from "./lesson";
 
+const META = { setId: "yilin-grade3", title: "译林版三年级上册" };
+
 describe("lesson pack generation", () => {
-  it("builds a playable sample School Planet pack with assets and story scenes", () => {
-    const words = selectDailyWords("school", 5);
-    const pack = buildSampleLessonPack(words);
+  it("builds a playable sample pack with assets and story scenes", () => {
+    const words = selectMissionWords("yilin-grade3", "3A", 5);
+    const pack = buildSampleLessonPack(words, META);
 
     expect(pack.source).toBe("sample");
+    expect(pack.topic).toBe("yilin-grade3");
+    expect(pack.title).toBe("译林版三年级上册");
     expect(pack.words).toHaveLength(5);
     expect(pack.assets).toHaveLength(5);
     expect(pack.storyScenes.length).toBeGreaterThanOrEqual(3);
@@ -15,13 +19,14 @@ describe("lesson pack generation", () => {
   });
 
   it("keeps sample word images text-free for picture selection", () => {
-    const words = selectDailyWords("school", 5);
-    const pack = buildSampleLessonPack(words);
-    const classroomImage = pack.assets.find((asset) => asset.wordId === "school-classroom")?.imageUrl ?? "";
-    const decoded = decodeURIComponent(classroomImage);
+    const words = selectMissionWords("yilin-grade3", "3A", 5);
+    const pack = buildSampleLessonPack(words, META);
+    const firstWord = getBookWords("yilin-grade3", "3A")[0];
+    const image = pack.assets.find((asset) => asset.wordId === firstWord.id)?.imageUrl ?? "";
+    const decoded = decodeURIComponent(image);
 
-    expect(decoded).not.toContain("classroom");
-    expect(decoded).not.toContain("教室");
+    expect(decoded).not.toContain(firstWord.word);
+    expect(decoded).not.toContain(firstWord.meaningZh);
     expect(decoded).not.toContain("<text");
   });
 });

@@ -7,7 +7,7 @@ import {
   imagePromptForWord,
   normalizeAgnesBaseUrl
 } from "./agnes";
-import { selectDailyWords } from "../data/vocabulary";
+import { selectMissionWords } from "../data/vocabulary";
 
 describe("Agnes API helpers", () => {
   it("normalizes the Agnes base URL without duplicating /v1", () => {
@@ -62,7 +62,7 @@ describe("Agnes API helpers", () => {
   });
 
   it("asks Agnes for picture clues without readable letters or the target word", () => {
-    const word = selectDailyWords("school", 5)[1];
+    const word = selectMissionWords("yilin-grade3", "3A", 5)[1];
     const prompt = imagePromptForWord(word);
 
     expect(prompt).not.toContain(`word "${word.word}"`);

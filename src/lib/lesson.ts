@@ -1,7 +1,7 @@
 import { imagePromptForWord, pickArtStyle, requestAgnesImage } from "./agnes";
 import type { AgnesSettings, LessonPack, StoryScene, WordEntry } from "../types";
 
-export const TEXT_FREE_ASSET_VERSION = 3;
+export const TEXT_FREE_ASSET_VERSION = 4;
 
 const palette = ["#dbeafe", "#dcfce7", "#fef3c7", "#ffe4e6", "#ede9fe"];
 
@@ -74,7 +74,12 @@ function svgDataUrl(label: string, index: number): string {
   return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
 }
 
-export function buildSampleLessonPack(words: WordEntry[]): LessonPack {
+export type LessonPackMeta = {
+  setId: string;
+  title: string;
+};
+
+export function buildSampleLessonPack(words: WordEntry[], meta: LessonPackMeta): LessonPack {
   const assets = words.map((word, index) => ({
     wordId: word.id,
     imageUrl: svgDataUrl(word.word, index),
@@ -106,9 +111,9 @@ export function buildSampleLessonPack(words: WordEntry[]): LessonPack {
   ];
 
   return {
-    id: `school-${new Date().toISOString().slice(0, 10)}`,
-    topic: "school",
-    title: "School Planet",
+    id: `${meta.setId}-${new Date().toISOString().slice(0, 10)}`,
+    topic: meta.setId,
+    title: meta.title,
     createdAt: Date.now(),
     assetPromptVersion: TEXT_FREE_ASSET_VERSION,
     source: "sample",
@@ -118,14 +123,18 @@ export function buildSampleLessonPack(words: WordEntry[]): LessonPack {
   };
 }
 
-export async function buildAgnesLessonPack(words: WordEntry[], settings: AgnesSettings): Promise<LessonPack> {
+export async function buildAgnesLessonPack(
+  words: WordEntry[],
+  settings: AgnesSettings,
+  meta: LessonPackMeta
+): Promise<LessonPack> {
   // One art style per practice group, derived from the word set so the group
   // stays visually consistent while different groups rotate styles.
   const style = pickArtStyle(words.map((word) => word.id).join("-"));
   const imageUrls = await Promise.all(
     words.map((word) => requestAgnesImage(settings, imagePromptForWord(word, style)))
   );
-  const base = buildSampleLessonPack(words);
+  const base = buildSampleLessonPack(words, meta);
 
   return {
     ...base,

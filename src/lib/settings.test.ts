@@ -3,12 +3,15 @@ import {
   clearSavedLearningPageState,
   defaultParentControlSettings,
   defaultSettings,
+  defaultVocabularySelection,
   loadLearningPageState,
   loadParentControlSettings,
   loadSettings,
+  loadVocabularySelection,
   saveLearningPageState,
   saveParentControlSettings,
-  saveSettings
+  saveSettings,
+  saveVocabularySelection
 } from "./storage";
 
 describe("app settings", () => {
@@ -104,6 +107,39 @@ describe("app settings", () => {
       screen: "home",
       activeIndex: 0,
       spellInput: ""
+    });
+  });
+
+  it("loads the default vocabulary selection before one is saved", () => {
+    expect(loadVocabularySelection()).toEqual(defaultVocabularySelection);
+  });
+
+  it("persists and reloads the vocabulary selection", () => {
+    saveVocabularySelection({ setId: "yilin-grade3", bookId: "3B", wordsPerMission: 10 });
+
+    expect(loadVocabularySelection()).toEqual({
+      setId: "yilin-grade3",
+      bookId: "3B",
+      wordsPerMission: 10
+    });
+  });
+
+  it("clamps an invalid words-per-mission count back to the default", () => {
+    localStorage.setItem(
+      "word-planet:vocabulary-selection:v1",
+      JSON.stringify({ setId: "yilin-grade3", bookId: "3A", wordsPerMission: 7 })
+    );
+
+    expect(loadVocabularySelection().wordsPerMission).toBe(defaultVocabularySelection.wordsPerMission);
+  });
+
+  it("falls back to default ids when stored selection fields are missing", () => {
+    localStorage.setItem("word-planet:vocabulary-selection:v1", JSON.stringify({ wordsPerMission: 8 }));
+
+    expect(loadVocabularySelection()).toEqual({
+      setId: defaultVocabularySelection.setId,
+      bookId: defaultVocabularySelection.bookId,
+      wordsPerMission: 8
     });
   });
 });

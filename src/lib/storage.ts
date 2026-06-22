@@ -6,16 +6,19 @@ import type {
   LessonPack,
   MissionMastery,
   ParentControlSettings,
-  VideoTaskState
+  VideoTaskState,
+  VocabularySelection
 } from "../types";
 
 const SETTINGS_KEY = "word-planet:settings:v1";
 const PROFILE_KEY = "word-planet:profile:v1";
 const PARENT_CONTROLS_KEY = "word-planet:parent-controls:v1";
 const LEARNING_PAGE_KEY = "word-planet:learning-page:v1";
+const VOCAB_SELECTION_KEY = "word-planet:vocabulary-selection:v1";
 const DB_NAME = "word-planet";
 const DB_VERSION = 1;
 const RESTORABLE_SCREENS = new Set<LearningScreen>(["home", "learn", "story", "game", "spell", "reward", "summary"]);
+const WORDS_PER_MISSION_OPTIONS = [5, 8, 10];
 
 export const defaultSettings: AgnesSettings = {
   apiKey: "",
@@ -41,6 +44,12 @@ export const defaultLearningPageState: LearningPageState = {
   screen: "home",
   activeIndex: 0,
   spellInput: ""
+};
+
+export const defaultVocabularySelection: VocabularySelection = {
+  setId: "yilin-grade3",
+  bookId: "3A",
+  wordsPerMission: 5
 };
 
 function readJson<T>(key: string, fallback: T): T {
@@ -98,6 +107,22 @@ export function saveLearningPageState(state: LearningPageState): void {
 
 export function clearSavedLearningPageState(): void {
   localStorage.removeItem(LEARNING_PAGE_KEY);
+}
+
+export function loadVocabularySelection(): VocabularySelection {
+  const saved = readJson<Partial<VocabularySelection>>(VOCAB_SELECTION_KEY, defaultVocabularySelection);
+  const wordsPerMission = Number(saved.wordsPerMission);
+  return {
+    setId: typeof saved.setId === "string" && saved.setId ? saved.setId : defaultVocabularySelection.setId,
+    bookId: typeof saved.bookId === "string" && saved.bookId ? saved.bookId : defaultVocabularySelection.bookId,
+    wordsPerMission: WORDS_PER_MISSION_OPTIONS.includes(wordsPerMission)
+      ? wordsPerMission
+      : defaultVocabularySelection.wordsPerMission
+  };
+}
+
+export function saveVocabularySelection(selection: VocabularySelection): void {
+  localStorage.setItem(VOCAB_SELECTION_KEY, JSON.stringify(selection));
 }
 
 function openDb(): Promise<IDBDatabase> {

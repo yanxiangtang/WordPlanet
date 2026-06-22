@@ -1,0 +1,314 @@
+{
+  "id": "yilin-grade3",
+  "name": "译林版三年级",
+  "description": "译林版小学英语三年级词汇表",
+  "sourceNote": "译林版小学英语三年级词汇表整理；不同地区或新版教材可能有少量差异，请以课本 Word lists 为准。",
+  "books": [
+    {
+      "id": "3A",
+      "name": "译林版三年级上册",
+      "units": [
+        {
+          "unit": 1,
+          "title": "Hello!",
+          "words": [
+            { "word": "Hello!", "meaning": "你好！", "type": "phrase" },
+            { "word": "Good morning.", "meaning": "早上好。", "type": "phrase" },
+            { "word": "Miss", "meaning": "小姐；老师", "type": "noun" },
+            { "word": "Hi.", "meaning": "你好。", "type": "phrase" },
+            { "word": "Good afternoon.", "meaning": "下午好。", "type": "phrase" },
+            { "word": "class", "meaning": "同学们", "type": "noun" },
+            { "word": "I", "meaning": "我", "type": "pronoun" },
+            { "word": "I'm", "fullForm": "I am", "meaning": "我是；我叫", "type": "contraction" }
+          ]
+        },
+        {
+          "unit": 2,
+          "title": "I'm Liu Tao",
+          "words": [
+            { "word": "are", "meaning": "是", "type": "verb" },
+            { "word": "you", "meaning": "你；你们", "type": "pronoun" },
+            { "word": "yes", "meaning": "是；对", "type": "adverb" },
+            { "word": "am", "meaning": "是", "type": "verb" },
+            { "word": "no", "meaning": "不；不是；没有", "type": "adverb" },
+            { "word": "not", "meaning": "不；没有", "type": "adverb" },
+            { "word": "Goodbye.", "meaning": "再见。", "type": "phrase" }
+          ]
+        },
+        {
+          "unit": 3,
+          "title": "My friends",
+          "words": [
+            { "word": "my", "meaning": "我的", "type": "pronoun" },
+            { "word": "friend", "meaning": "朋友", "type": "noun" },
+            { "word": "she", "meaning": "她", "type": "pronoun" },
+            { "word": "she's", "fullForm": "she is", "meaning": "她是；她叫", "type": "contraction" },
+            { "word": "he", "meaning": "他", "type": "pronoun" },
+            { "word": "he's", "fullForm": "he is", "meaning": "他是；他叫", "type": "contraction" },
+            { "word": "too", "meaning": "也", "type": "adverb" },
+            { "word": "this", "meaning": "这；这个", "type": "pronoun" },
+            { "word": "is", "meaning": "是", "type": "verb" },
+            { "word": "sister", "meaning": "姐姐；妹妹", "type": "noun" }
+          ]
+        },
+        {
+          "unit": 4,
+          "title": "My family",
+          "words": [
+            { "word": "family", "meaning": "家；家庭", "type": "noun" },
+            { "word": "father", "meaning": "父亲；爸爸", "type": "noun" },
+            { "word": "mother", "meaning": "母亲；妈妈", "type": "noun" },
+            { "word": "brother", "meaning": "哥哥；弟弟", "type": "noun" },
+            { "word": "me", "meaning": "我", "type": "pronoun" },
+            { "word": "grandpa", "meaning": "祖父；外祖父", "type": "noun" },
+            { "word": "grandma", "meaning": "祖母；外祖母", "type": "noun" },
+            { "word": "Good evening.", "meaning": "晚上好。", "type": "phrase" }
+          ]
+        },
+        {
+          "unit": 5,
+          "title": "Look at me!",
+          "words": [
+            { "word": "look at", "meaning": "看；瞧", "type": "phrase" },
+            { "word": "T-shirt", "meaning": "T 恤衫", "type": "noun" },
+            { "word": "it", "meaning": "它", "type": "pronoun" },
+            { "word": "it's", "fullForm": "it is", "meaning": "它是", "type": "contraction" },
+            { "word": "nice", "meaning": "好看的；好的", "type": "adjective" },
+            { "word": "skirt", "meaning": "裙子", "type": "noun" },
+            { "word": "How nice!", "meaning": "真好看！", "type": "phrase" },
+            { "word": "cap", "meaning": "便帽；帽子", "type": "noun" },
+            { "word": "great", "meaning": "好极了；很好", "type": "adjective" },
+            { "word": "jacket", "meaning": "夹克衫", "type": "noun" },
+            { "word": "new", "meaning": "新的", "type": "adjective" },
+            { "word": "What colour...?", "meaning": "……是什么颜色的？", "type": "phrase" },
+            { "word": "red", "meaning": "红色的", "type": "adjective" }
+          ]
+        },
+        {
+          "unit": 6,
+          "title": "Colours",
+          "words": [
+            { "word": "colour", "meaning": "颜色", "type": "noun" },
+            { "word": "orange", "meaning": "橙色的；橙子", "type": "adjective/noun" },
+            { "word": "now", "meaning": "现在；目前", "type": "adverb" },
+            { "word": "green", "meaning": "绿色的", "type": "adjective" },
+            { "word": "and", "meaning": "和；与；又", "type": "conjunction" },
+            { "word": "yellow", "meaning": "黄色的", "type": "adjective" },
+            { "word": "black", "meaning": "黑色的", "type": "adjective" },
+            { "word": "blue", "meaning": "蓝色的", "type": "adjective" },
+            { "word": "brown", "meaning": "棕色的", "type": "adjective" },
+            { "word": "white", "meaning": "白色的", "type": "adjective" },
+            { "word": "Would you like...?", "meaning": "你想要……吗？", "type": "phrase" },
+            { "word": "an", "meaning": "一个", "type": "article" },
+            { "word": "egg", "meaning": "蛋；鸡蛋", "type": "noun" },
+            { "word": "Yes, please.", "meaning": "好的，谢谢。", "type": "phrase" },
+            { "word": "or", "meaning": "或；还是", "type": "conjunction" }
+          ]
+        },
+        {
+          "unit": 7,
+          "title": "Would you like a pie?",
+          "words": [
+            { "word": "a", "meaning": "一个", "type": "article" },
+            { "word": "pie", "meaning": "馅饼；派", "type": "noun" },
+            { "word": "Nice to meet you.", "meaning": "很高兴认识你。", "type": "phrase" },
+            { "word": "No, thank you.", "meaning": "不，谢谢你。", "type": "phrase" },
+            { "word": "What about...?", "meaning": "……怎么样？", "type": "phrase" },
+            { "word": "cake", "meaning": "蛋糕；糕饼", "type": "noun" },
+            { "word": "ice cream", "meaning": "冰淇淋", "type": "noun" },
+            { "word": "sweet", "meaning": "糖果", "type": "noun" },
+            { "word": "hot dog", "meaning": "热狗", "type": "noun" },
+            { "word": "look", "meaning": "看；瞧", "type": "verb" },
+            { "word": "what", "meaning": "什么", "type": "pronoun" },
+            { "word": "what's", "fullForm": "what is", "meaning": "是什么", "type": "contraction" }
+          ]
+        },
+        {
+          "unit": 8,
+          "title": "Happy New Year!",
+          "words": [
+            { "word": "Happy New Year!", "meaning": "新年快乐！", "type": "phrase" },
+            { "word": "uncle", "meaning": "叔父；伯父；舅父；姑父；姨父", "type": "noun" },
+            { "word": "This is for you.", "meaning": "这是给你的。", "type": "phrase" },
+            { "word": "doll", "meaning": "玩具娃娃", "type": "noun" },
+            { "word": "that", "meaning": "那；那个", "type": "pronoun" },
+            { "word": "ball", "meaning": "球", "type": "noun" },
+            { "word": "CD", "meaning": "光盘", "type": "noun" },
+            { "word": "robot", "meaning": "机器人", "type": "noun" },
+            { "word": "car", "meaning": "小汽车；轿车", "type": "noun" },
+            { "word": "Happy Birthday!", "meaning": "生日快乐！", "type": "phrase" },
+            { "word": "toy", "meaning": "玩具", "type": "noun" },
+            { "word": "ah", "meaning": "啊", "type": "interjection" },
+            { "word": "ha", "meaning": "哈", "type": "interjection" }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "3B",
+      "name": "译林版三年级下册",
+      "units": [
+        {
+          "unit": 1,
+          "title": "In class",
+          "words": [
+            { "word": "in class", "meaning": "在上课", "type": "phrase" },
+            { "word": "stand up", "meaning": "站起来", "type": "phrase" },
+            { "word": "Mr", "meaning": "先生", "type": "noun" },
+            { "word": "sit down", "meaning": "坐下", "type": "phrase" },
+            { "word": "please", "meaning": "请", "type": "adverb" },
+            { "word": "open", "meaning": "打开", "type": "verb" },
+            { "word": "the", "meaning": "这个；那个", "type": "article" },
+            { "word": "door", "meaning": "门", "type": "noun" },
+            { "word": "sorry", "meaning": "对不起；抱歉", "type": "adjective" },
+            { "word": "come in", "meaning": "进来", "type": "phrase" },
+            { "word": "close", "meaning": "关；关闭", "type": "verb" },
+            { "word": "window", "meaning": "窗户", "type": "noun" },
+            { "word": "blackboard", "meaning": "黑板", "type": "noun" },
+            { "word": "book", "meaning": "书；本子", "type": "noun" },
+            { "word": "rubber", "meaning": "橡皮", "type": "noun" },
+            { "word": "don't", "fullForm": "do not", "meaning": "不要", "type": "contraction" },
+            { "word": "listen to", "meaning": "听", "type": "phrase" },
+            { "word": "parrot", "meaning": "鹦鹉", "type": "noun" }
+          ]
+        },
+        {
+          "unit": 2,
+          "title": "In the library",
+          "words": [
+            { "word": "in", "meaning": "在……里", "type": "preposition" },
+            { "word": "library", "meaning": "图书馆", "type": "noun" },
+            { "word": "shout", "meaning": "喊；叫", "type": "verb" },
+            { "word": "run", "meaning": "跑", "type": "verb" },
+            { "word": "eat", "meaning": "吃", "type": "verb" },
+            { "word": "here", "meaning": "这里", "type": "adverb" },
+            { "word": "talk", "meaning": "说话；交谈", "type": "verb" },
+            { "word": "sleep", "meaning": "睡觉", "type": "verb" },
+            { "word": "drink", "meaning": "喝；饮料", "type": "verb/noun" },
+            { "word": "milk", "meaning": "牛奶", "type": "noun" },
+            { "word": "English", "meaning": "英语", "type": "noun" },
+            { "word": "your", "meaning": "你的；你们的", "type": "pronoun" }
+          ]
+        },
+        {
+          "unit": 3,
+          "title": "Is this your pencil?",
+          "words": [
+            { "word": "pencil", "meaning": "铅笔", "type": "noun" },
+            { "word": "isn't", "fullForm": "is not", "meaning": "不是", "type": "contraction" },
+            { "word": "that's", "fullForm": "that is", "meaning": "那是", "type": "contraction" },
+            { "word": "schoolbag", "meaning": "书包", "type": "noun" },
+            { "word": "pen", "meaning": "钢笔；笔", "type": "noun" },
+            { "word": "crayon", "meaning": "蜡笔", "type": "noun" },
+            { "word": "ruler", "meaning": "尺；直尺", "type": "noun" },
+            { "word": "pencil case", "meaning": "铅笔盒；文具盒", "type": "noun" },
+            { "word": "where", "meaning": "哪里", "type": "adverb" },
+            { "word": "where's", "fullForm": "where is", "meaning": "在哪里", "type": "contraction" },
+            { "word": "over there", "meaning": "在那儿", "type": "phrase" }
+          ]
+        },
+        {
+          "unit": 4,
+          "title": "Where is the bird?",
+          "words": [
+            { "word": "bird", "meaning": "鸟", "type": "noun" },
+            { "word": "beautiful", "meaning": "美丽的", "type": "adjective" },
+            { "word": "under", "meaning": "在……下面", "type": "preposition" },
+            { "word": "desk", "meaning": "书桌", "type": "noun" },
+            { "word": "behind", "meaning": "在……后面", "type": "preposition" },
+            { "word": "on", "meaning": "在……上面", "type": "preposition" },
+            { "word": "chair", "meaning": "椅子", "type": "noun" },
+            { "word": "tree", "meaning": "树", "type": "noun" },
+            { "word": "guess", "meaning": "猜", "type": "verb" },
+            { "word": "one", "meaning": "一", "type": "number" },
+            { "word": "two", "meaning": "二", "type": "number" },
+            { "word": "three", "meaning": "三", "type": "number" },
+            { "word": "oh", "meaning": "哦；啊", "type": "interjection" },
+            { "word": "wow", "meaning": "哇", "type": "interjection" }
+          ]
+        },
+        {
+          "unit": 5,
+          "title": "How old are you?",
+          "words": [
+            { "word": "How old are you?", "meaning": "你多大？", "type": "phrase" },
+            { "word": "lovely", "meaning": "可爱的", "type": "adjective" },
+            { "word": "nine", "meaning": "九", "type": "number" },
+            { "word": "eight", "meaning": "八", "type": "number" },
+            { "word": "four", "meaning": "四", "type": "number" },
+            { "word": "five", "meaning": "五", "type": "number" },
+            { "word": "six", "meaning": "六", "type": "number" },
+            { "word": "seven", "meaning": "七", "type": "number" },
+            { "word": "ten", "meaning": "十", "type": "number" },
+            { "word": "right", "meaning": "对的；正确的", "type": "adjective" },
+            { "word": "out", "meaning": "出局", "type": "adverb" },
+            { "word": "What a nice cake!", "meaning": "多么漂亮的蛋糕啊！", "type": "phrase" },
+            { "word": "Make a wish.", "meaning": "许个愿吧。", "type": "phrase" },
+            { "word": "want", "meaning": "想要", "type": "verb" },
+            { "word": "it's time for...", "meaning": "是……的时候了", "type": "phrase" }
+          ]
+        },
+        {
+          "unit": 6,
+          "title": "What time is it?",
+          "words": [
+            { "word": "What time is it?", "meaning": "几点了？", "type": "phrase" },
+            { "word": "wake up", "meaning": "醒；醒来", "type": "phrase" },
+            { "word": "mum", "meaning": "妈妈", "type": "noun" },
+            { "word": "o'clock", "meaning": "……点钟", "type": "noun" },
+            { "word": "breakfast", "meaning": "早餐", "type": "noun" },
+            { "word": "Hurry up.", "meaning": "快点。", "type": "phrase" },
+            { "word": "class", "meaning": "课；上课", "type": "noun" },
+            { "word": "dinner", "meaning": "晚餐；晚饭", "type": "noun" },
+            { "word": "bed", "meaning": "床", "type": "noun" },
+            { "word": "OK", "meaning": "好；行", "type": "phrase" },
+            { "word": "lunch", "meaning": "午餐；午饭", "type": "noun" },
+            { "word": "eleven", "meaning": "十一", "type": "number" },
+            { "word": "twelve", "meaning": "十二", "type": "number" },
+            { "word": "bag", "meaning": "包", "type": "noun" },
+            { "word": "these", "meaning": "这些", "type": "pronoun" },
+            { "word": "here's", "fullForm": "here is", "meaning": "这是；这儿有", "type": "contraction" }
+          ]
+        },
+        {
+          "unit": 7,
+          "title": "On the farm",
+          "words": [
+            { "word": "farm", "meaning": "农场", "type": "noun" },
+            { "word": "Welcome to...", "meaning": "欢迎来到……", "type": "phrase" },
+            { "word": "they", "meaning": "他们；她们；它们", "type": "pronoun" },
+            { "word": "they're", "fullForm": "they are", "meaning": "他们/她们/它们是", "type": "contraction" },
+            { "word": "pig", "meaning": "猪", "type": "noun" },
+            { "word": "those", "meaning": "那些", "type": "pronoun" },
+            { "word": "cow", "meaning": "奶牛", "type": "noun" },
+            { "word": "apple", "meaning": "苹果", "type": "noun" },
+            { "word": "pear", "meaning": "梨", "type": "noun" },
+            { "word": "chicken", "meaning": "鸡", "type": "noun" },
+            { "word": "duck", "meaning": "鸭子", "type": "noun" },
+            { "word": "orange", "meaning": "橙子", "type": "noun" },
+            { "word": "picture", "meaning": "图画；照片", "type": "noun" },
+            { "word": "who", "meaning": "谁", "type": "pronoun" },
+            { "word": "who's", "fullForm": "who is", "meaning": "谁是", "type": "contraction" }
+          ]
+        },
+        {
+          "unit": 8,
+          "title": "We're twins",
+          "words": [
+            { "word": "we", "meaning": "我们", "type": "pronoun" },
+            { "word": "we're", "fullForm": "we are", "meaning": "我们是", "type": "contraction" },
+            { "word": "twin", "meaning": "双胞胎之一", "type": "noun" },
+            { "word": "aunt", "meaning": "姑母；姨母；伯母；婶母；舅母", "type": "noun" },
+            { "word": "girl", "meaning": "女孩", "type": "noun" },
+            { "word": "man", "meaning": "男人", "type": "noun" },
+            { "word": "woman", "meaning": "女人；妇女", "type": "noun" },
+            { "word": "boy", "meaning": "男孩", "type": "noun" },
+            { "word": "baby", "meaning": "婴儿；宝宝", "type": "noun" },
+            { "word": "cousin", "meaning": "堂/表兄弟姐妹", "type": "noun" },
+            { "word": "name", "meaning": "名字", "type": "noun" }
+          ]
+        }
+      ]
+    }
+  ]
+}

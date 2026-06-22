@@ -17,7 +17,6 @@ import {
   Play,
   RefreshCcw,
   Sparkles,
-  School,
   ShieldCheck,
   Star,
   Trash2,
@@ -26,23 +25,27 @@ import {
   Volume2
 } from "lucide-react";
 import { useEffect, useMemo, useState, type FormEvent } from "react";
-import { selectDailyWords } from "./data/vocabulary";
+import { getVocabularySet, listVocabularySets, selectMissionWords } from "./data/vocabulary";
 import { createAgnesVideoTask, pickArtStyle, pollAgnesVideo, testAgnesConnection, videoRewardPrompt } from "./lib/agnes";
 import { buildAgnesLessonPack, buildSampleLessonPack, getWordImage, TEXT_FREE_ASSET_VERSION } from "./lib/lesson";
 import { createEmptyMastery, isMissionComplete, laneProgress, recordMasteryResult } from "./lib/mastery";
 import { listenForWord, speak, speechRecognitionSupported } from "./lib/speech";
 import { buildShuffledLetterTiles } from "./lib/spelling";
 import {
+  clearSavedLearningPageState,
   defaultProfile,
   defaultSettings,
+  defaultVocabularySelection,
   loadLearningPageState,
   loadParentControlSettings,
   loadProfile,
   loadSettings,
+  loadVocabularySelection,
   saveLearningPageState,
   saveParentControlSettings,
   saveProfile,
   saveSettings,
+  saveVocabularySelection,
   storage
 } from "./lib/storage";
 import type {
@@ -53,12 +56,22 @@ import type {
   MissionMastery,
   ParentControlSettings,
   VideoTaskState,
+  VocabularySelection,
+  VocabularySet,
   WordEntry
 } from "./types";
 
 type Screen = "setup" | LearningScreen;
 
-const dailyWords = selectDailyWords("school", 5);
+// Clamp a stored selection to a set/book that still exists (vocabulary JSON
+// files can change), falling back to the first available set/book.
+function resolveSelection(selection: VocabularySelection): VocabularySelection {
+  const sets = listVocabularySets();
+  if (sets.length === 0) return selection;
+  const set = sets.find((item) => item.id === selection.setId) ?? sets[0];
+  const book = set.books.find((item) => item.id === selection.bookId) ?? set.books[0];
+  return { ...selection, setId: set.id, bookId: book?.id ?? selection.bookId };
+}
 
 function App() {
   const [settings, setSettings] = useState<AgnesSettings>(() => (typeof window === "undefined" ? defaultSettings : loadSettings()));
@@ -69,7 +82,21 @@ function App() {
   const [parentUnlocked, setParentUnlocked] = useState(false);
   const [screen, setScreen] = useState<Screen>("home");
   const [pack, setPack] = useState<LessonPack | null>(null);
-  const [mastery, setMastery] = useState<MissionMastery>(() => createEmptyMastery(dailyWords.map((word) => word.id)));
+  const [selection, setSelection] = useState<VocabularySelection>(() =>
+    resolveSelection(typeof window === "undefined" ? defaultVocabularySelection : loadVocabularySelection())
+  );
+  const vocabularySets = useMemo<VocabularySet[]>(() => listVocabularySets(), []);
+  const missionWords = useMemo(
+    () => selectMissionWords(selection.setId, selection.bookId, selection.wordsPerMission),
+    [selection.setId, selection.bookId, selection.wordsPerMission]
+  );
+  const missionTitle = useMemo(() => {
+    const set = getVocabularySet(selection.setId);
+    const book = set?.books.find((item) => item.id === selection.bookId);
+    return book?.name ?? set?.name ?? "Word Planet";
+  }, [selection.setId, selection.bookId]);
+  const lessonMeta = useMemo(() => ({ setId: selection.setId, title: missionTitle }), [selection.setId, missionTitle]);
+  const [mastery, setMastery] = useState<MissionMastery>(() => createEmptyMastery(missionWords.map((word) => word.id)));
   const [video, setVideo] = useState<VideoTaskState>({ status: "idle", progress: 0 });
   const [activeIndex, setActiveIndex] = useState(0);
   const [isGenerating, setGenerating] = useState(false);
@@ -78,8 +105,8 @@ function App() {
   const [spellInput, setSpellInput] = useState("");
   const [speechMessage, setSpeechMessage] = useState("");
 
-  const activeWord = pack?.words[activeIndex] ?? dailyWords[activeIndex];
-  const dashboardPack = pack ?? buildSampleLessonPack(dailyWords);
+  const activeWord = pack?.words[activeIndex] ?? missionWords[activeIndex];
+  const dashboardPack = pack ?? buildSampleLessonPack(missionWords, lessonMeta);
   const missionReady = Boolean(pack);
   const complete = useMemo(() => isMissionComplete(mastery), [mastery]);
   const hasApiKey = settings.apiKey.trim().length > 0;
@@ -127,9 +154,31 @@ function App() {
     });
   }, [activeIndex, screen, spellInput]);
 
+  // When the parent changes the vocabulary set/book/count, the cached pack no
+  // longer matches the words. Drop it and start a fresh mission so the new book
+  // takes effect (parents re-generate images deliberately). The parent stays on
+  // whatever screen they are on — typically the settings screen.
+  useEffect(() => {
+    if (!hydrated) return;
+    setPack(null);
+    setActiveIndex(0);
+    setMastery(createEmptyMastery(missionWords.map((word) => word.id)));
+    setVideo({ status: "idle", progress: 0 });
+    clearSavedLearningPageState();
+    storage.deleteLesson().catch(() => {});
+    setNotice("Vocabulary updated. A fresh mission is ready — generate pictures when you like.");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [missionWords]);
+
   function persistSettings(next: AgnesSettings) {
     setSettings(next);
     saveSettings(next);
+  }
+
+  function persistSelection(next: VocabularySelection) {
+    const resolved = resolveSelection(next);
+    setSelection(resolved);
+    saveVocabularySelection(resolved);
   }
 
   function persistProfile(next: ChildProfile) {
@@ -149,10 +198,10 @@ function App() {
 
   async function startMission(forceSample = false) {
     setGenerating(true);
-    setNotice(forceSample || !hasApiKey ? "Loading the built-in School Planet sample mission." : "Asking Agnes to generate your lesson images.");
+    setNotice(forceSample || !hasApiKey ? "Loading the built-in sample mission." : "Asking Agnes to generate your lesson images.");
     try {
       const nextPack =
-        hasApiKey && !forceSample ? await buildAgnesLessonPack(dailyWords, settings) : buildSampleLessonPack(dailyWords);
+        hasApiKey && !forceSample ? await buildAgnesLessonPack(missionWords, settings, lessonMeta) : buildSampleLessonPack(missionWords, lessonMeta);
       const nextMastery = createEmptyMastery(nextPack.words.map((word) => word.id));
       setPack(nextPack);
       setMastery(nextMastery);
@@ -162,7 +211,7 @@ function App() {
       await Promise.all([storage.saveLesson(nextPack), storage.saveMastery(nextMastery), storage.saveVideo({ status: "idle", progress: 0 })]);
       setNotice(nextPack.source === "agnes" ? "Agnes lesson pack saved in this browser." : "Sample mission saved in this browser.");
     } catch (error) {
-      const fallback = buildSampleLessonPack(dailyWords);
+      const fallback = buildSampleLessonPack(missionWords, lessonMeta);
       setPack(fallback);
       setMastery(createEmptyMastery(fallback.words.map((word) => word.id)));
       setScreen("home");
@@ -177,7 +226,7 @@ function App() {
     setGenerating(true);
     setNotice(hasApiKey ? "Regenerating cached lesson pictures." : "Refreshing the built-in sample pictures.");
     try {
-      const nextPack = hasApiKey ? await buildAgnesLessonPack(dailyWords, settings) : buildSampleLessonPack(dailyWords);
+      const nextPack = hasApiKey ? await buildAgnesLessonPack(missionWords, settings, lessonMeta) : buildSampleLessonPack(missionWords, lessonMeta);
       setPack(nextPack);
       setActiveIndex((value) => Math.min(value, Math.max(nextPack.words.length - 1, 0)));
       await storage.saveLesson(nextPack);
@@ -299,7 +348,7 @@ function App() {
 
   return (
     <div className={`app-shell theme-${profile.gender}`}>
-      <TopBar profile={profile} onSetup={() => setScreen("setup")} />
+      <TopBar profile={profile} missionTitle={missionTitle} onSetup={() => setScreen("setup")} />
       <main className="main-stage">
         {screen === "setup" ? (
           <section className="setup-panel">
@@ -309,12 +358,15 @@ function App() {
               settings={settings}
               profile={profile}
               parentControls={parentControls}
+              selection={selection}
+              vocabularySets={vocabularySets}
               unlocked={parentUnlocked}
               pack={pack}
               video={video}
               onSettings={persistSettings}
               onProfile={persistProfile}
               onParentControls={persistParentControls}
+              onSelection={persistSelection}
               onUnlock={() => setParentUnlocked(true)}
               onStart={() => startMission(false)}
               onRegeneratePictures={regeneratePictures}
@@ -437,7 +489,7 @@ function MissionDashboard({
   onGameAnswer: (word: WordEntry, correct: boolean) => void;
 }) {
   return (
-    <section className="mission-dashboard" aria-label="School Planet mission dashboard">
+    <section className="mission-dashboard" aria-label="Word Planet mission dashboard">
       <div className="dashboard-notice-row">
         <Notice text={notice} />
         {isGenerating && <RequestSpinner label="Working on your mission…" />}
@@ -943,7 +995,7 @@ function BottomNav({
   );
 }
 
-function TopBar({ profile, onSetup }: { profile: ChildProfile; onSetup: () => void }) {
+function TopBar({ profile, missionTitle, onSetup }: { profile: ChildProfile; missionTitle: string; onSetup: () => void }) {
   return (
     <header className="top-bar">
       <div className="brand-mark">
@@ -954,9 +1006,9 @@ function TopBar({ profile, onSetup }: { profile: ChildProfile; onSetup: () => vo
         </div>
       </div>
       <div className="mission-pill">
-        <School size={42} />
+        <BookOpen size={42} />
         <span>Mission</span>
-        <strong>School Planet</strong>
+        <strong>{missionTitle}</strong>
       </div>
       <div className="top-actions">
         <span className="star-pill">
@@ -1032,12 +1084,15 @@ function ParentControlScreen({
   settings,
   profile,
   parentControls,
+  selection,
+  vocabularySets,
   unlocked,
   pack,
   video,
   onSettings,
   onProfile,
   onParentControls,
+  onSelection,
   onUnlock,
   onStart,
   onRegeneratePictures,
@@ -1049,12 +1104,15 @@ function ParentControlScreen({
   settings: AgnesSettings;
   profile: ChildProfile;
   parentControls: ParentControlSettings;
+  selection: VocabularySelection;
+  vocabularySets: VocabularySet[];
   unlocked: boolean;
   pack: LessonPack | null;
   video: VideoTaskState;
   onSettings: (settings: AgnesSettings) => void;
   onProfile: (profile: ChildProfile) => void;
   onParentControls: (settings: ParentControlSettings) => void;
+  onSelection: (selection: VocabularySelection) => void;
   onUnlock: () => void;
   onStart: () => void;
   onRegeneratePictures: () => void;
@@ -1194,6 +1252,57 @@ function ParentControlScreen({
       </section>
 
       <section className="setup-card">
+        <h2>
+          <BookOpen size={24} />
+          Vocabulary
+        </h2>
+        <label>
+          Vocabulary set
+          <select
+            value={selection.setId}
+            onChange={(event) => {
+              const set = vocabularySets.find((item) => item.id === event.target.value);
+              onSelection({
+                ...selection,
+                setId: event.target.value,
+                bookId: set?.books[0]?.id ?? selection.bookId
+              });
+            }}
+          >
+            {vocabularySets.map((set) => (
+              <option key={set.id} value={set.id}>
+                {set.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Book
+          <select value={selection.bookId} onChange={(event) => onSelection({ ...selection, bookId: event.target.value })}>
+            {(vocabularySets.find((item) => item.id === selection.setId)?.books ?? []).map((book) => (
+              <option key={book.id} value={book.id}>
+                {book.name} ({book.wordCount} words)
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Words per mission
+          <select
+            value={selection.wordsPerMission}
+            onChange={(event) => onSelection({ ...selection, wordsPerMission: Number(event.target.value) })}
+          >
+            {[5, 8, 10].map((count) => (
+              <option key={count} value={count}>
+                {count}
+              </option>
+            ))}
+          </select>
+        </label>
+        <p className="fine-print">Changing the set or book starts a fresh mission word list.</p>
+      </section>
+
+      <section className="setup-card">
         <h2>Agnes API</h2>
         <label>
           API key
@@ -1312,11 +1421,11 @@ function HomeScreen({
   return (
     <div className="home-screen">
       <div>
-        <h2>Today’s School Planet words</h2>
+        <h2>Today’s mission words</h2>
         <p>Learn, listen, say, write, then unlock a video reward.</p>
       </div>
       <div className="word-strip">
-        {(pack?.words ?? dailyWords).map((word) => (
+        {(pack?.words ?? []).map((word) => (
           <span key={word.id}>{word.word}</span>
         ))}
       </div>
@@ -1619,7 +1728,7 @@ function SummaryScreen({ mastery, onRestart }: { mastery: MissionMastery; onRest
     <div className="summary-screen">
       <Sparkles size={58} />
       <h2>Great mission!</h2>
-      <p>今天你完成了 School Planet 的单词任务。</p>
+      <p>今天你完成了单词任务。</p>
       <div className="summary-grid">
         <span>Meaning: {meaning.completed}/{meaning.total}</span>
         <span>Say: {say.completed}/{say.total}</span>
