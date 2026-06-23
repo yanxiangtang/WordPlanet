@@ -26,6 +26,24 @@ describe("kid profile settings", () => {
     });
   });
 
+  test("defaults the visual style to auto", () => {
+    expect(defaultProfile.visualStyleId).toBe("auto");
+  });
+
+  test("loads older saved profiles with a visual style default", () => {
+    localStorage.setItem(
+      "word-planet:profile:v1",
+      JSON.stringify({ nickname: "Lulu", age: 10, nativeLanguage: "Chinese", englishLevel: "intermediate", gender: "girl" })
+    );
+
+    expect(loadProfile()).toMatchObject({
+      nickname: "Lulu",
+      age: 10,
+      gender: "girl",
+      visualStyleId: "auto"
+    });
+  });
+
   test("loads older saved profiles with a gender default", () => {
     localStorage.setItem(
       "word-planet:profile:v1",

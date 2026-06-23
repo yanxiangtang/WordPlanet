@@ -1,6 +1,5 @@
 import {
   ArrowRight,
-  Backpack,
   BookOpen,
   Check,
   ChevronLeft,
@@ -22,15 +21,15 @@ import {
   Trophy,
   Users,
   Volume2,
-  X
+  X,
+  type LucideIcon
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
-import { getVocabularySet, listVocabularySets, selectMissionWords } from "./data/vocabulary";
+import { getVocabularySet, listBookUnits, listVocabularySets, selectMissionWords } from "./data/vocabulary";
 import {
   blobToDataUri,
   createAgnesVideoTask,
   fetchAgnesVideoBlob,
-  pickArtStyle,
   pollAgnesVideo,
   testAgnesConnection,
   videoRewardPrompt
@@ -46,12 +45,11 @@ import {
 import { createEmptyMastery, isMissionComplete, laneProgress, recordMasteryResult } from "./lib/mastery";
 import { listenForWord, speak, speechRecognitionSupported } from "./lib/speech";
 import { buildShuffledLetterTiles } from "./lib/spelling";
+import { DEFAULT_STYLE_ID, getStyle, resolveStyleDescriptor, VISUAL_STYLES, type VisualStyle } from "./lib/styles";
 import {
-  clearSavedLearningPageState,
   defaultProfile,
   defaultSettings,
   defaultVocabularySelection,
-  loadLearningPageState,
   loadParentControlSettings,
   loadProfile,
   loadSettings,
@@ -61,7 +59,8 @@ import {
   saveProfile,
   saveSettings,
   saveVocabularySelection,
-  storage
+  storage,
+  unitStorageKey
 } from "./lib/storage";
 import type {
   AgnesSettings,
@@ -73,10 +72,32 @@ import type {
   VideoTaskState,
   VocabularySelection,
   VocabularySet,
+  VocabularyUnit,
   WordEntry
 } from "./types";
 
 type Screen = "setup" | LearningScreen;
+const URL_SCREENS = new Set<Screen>(["home", "learn", "story", "game", "spell", "reward", "summary", "setup"]);
+
+type UnitLessonSummary = {
+  hasPack: boolean;
+  hasVideo: boolean;
+  hasProgress: boolean;
+  complete: boolean;
+};
+
+function readScreenFromUrl(): Screen | null {
+  if (typeof window === "undefined") return null;
+  const page = new URLSearchParams(window.location.search).get("page");
+  return page && URL_SCREENS.has(page as Screen) ? (page as Screen) : null;
+}
+
+function writeScreenToUrl(screen: Screen): void {
+  if (typeof window === "undefined") return;
+  const url = new URL(window.location.href);
+  url.searchParams.set("page", screen);
+  window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}${url.hash}`);
+}
 
 // Wait a fixed number of milliseconds; used to pace the parent-side video
 // regeneration poll loop so we don't hammer Agnes' status endpoint.
@@ -91,7 +112,14 @@ function resolveSelection(selection: VocabularySelection): VocabularySelection {
   if (sets.length === 0) return selection;
   const set = sets.find((item) => item.id === selection.setId) ?? sets[0];
   const book = set.books.find((item) => item.id === selection.bookId) ?? set.books[0];
-  return { ...selection, setId: set.id, bookId: book?.id ?? selection.bookId };
+  const units = book ? listBookUnits(set.id, book.id) : [];
+  const unit = units.find((item) => item.unitNumber === selection.unitNumber) ?? units[0];
+  return {
+    ...selection,
+    setId: set.id,
+    bookId: book?.id ?? selection.bookId,
+    unitNumber: unit?.unitNumber ?? selection.unitNumber
+  };
 }
 
 function App() {
@@ -101,28 +129,43 @@ function App() {
     typeof window === "undefined" ? { password: "", createdAt: null } : loadParentControlSettings()
   );
   const [parentUnlocked, setParentUnlocked] = useState(false);
-  const [screen, setScreen] = useState<Screen>("home");
+  const [screen, setScreen] = useState<Screen>(() => readScreenFromUrl() ?? "home");
   const [pack, setPack] = useState<LessonPack | null>(null);
   const [selection, setSelection] = useState<VocabularySelection>(() =>
     resolveSelection(typeof window === "undefined" ? defaultVocabularySelection : loadVocabularySelection())
   );
   const vocabularySets = useMemo<VocabularySet[]>(() => listVocabularySets(), []);
+  const bookUnits = useMemo(
+    () => listBookUnits(selection.setId, selection.bookId),
+    [selection.setId, selection.bookId]
+  );
   const missionWords = useMemo(
-    () => selectMissionWords(selection.setId, selection.bookId, selection.wordsPerMission),
-    [selection.setId, selection.bookId, selection.wordsPerMission]
+    () => selectMissionWords(selection.setId, selection.bookId, selection.wordsPerMission, selection.unitNumber),
+    [selection.setId, selection.bookId, selection.unitNumber, selection.wordsPerMission]
   );
   const missionTitle = useMemo(() => {
     const set = getVocabularySet(selection.setId);
     const book = set?.books.find((item) => item.id === selection.bookId);
-    return book?.name ?? set?.name ?? "Word Planet";
-  }, [selection.setId, selection.bookId]);
-  const lessonMeta = useMemo(() => ({ setId: selection.setId, title: missionTitle }), [selection.setId, missionTitle]);
+    const unit = bookUnits.find((item) => item.unitNumber === selection.unitNumber);
+    return [book?.name ?? set?.name, unit ? `Unit ${unit.unitNumber}: ${unit.title}` : null].filter(Boolean).join(" · ") || "Word Planet";
+  }, [bookUnits, selection.setId, selection.bookId, selection.unitNumber]);
+  const lessonMeta = useMemo(
+    () => ({ setId: `${selection.setId}-${selection.bookId}-unit-${selection.unitNumber}`, title: missionTitle }),
+    [selection.setId, selection.bookId, selection.unitNumber, missionTitle]
+  );
+  const activeUnitKey = useMemo(() => unitStorageKey(selection), [selection.setId, selection.bookId, selection.unitNumber]);
   const [mastery, setMastery] = useState<MissionMastery>(() => createEmptyMastery(missionWords.map((word) => word.id)));
   const [video, setVideo] = useState<VideoTaskState>({ status: "idle", progress: 0 });
+  const [unitSummaries, setUnitSummaries] = useState<Record<number, UnitLessonSummary>>({});
+  const [detailUnitNumber, setDetailUnitNumber] = useState<number>(selection.unitNumber);
   const [activeIndex, setActiveIndex] = useState(0);
   const [isGenerating, setGenerating] = useState(false);
   const [hydrated, setHydrated] = useState(false);
-  const [notice, setNotice] = useState("Sample mission is ready. Add an Agnes key when you want generated images and video.");
+  const [notice, setNotice] = useState(() =>
+    settings.apiKey.trim().length > 0
+      ? ""
+      : "Sample mission is ready. Add an Agnes key when you want generated images and video."
+  );
   const [spellInput, setSpellInput] = useState("");
   const [speechMessage, setSpeechMessage] = useState("");
   const [isVideoBusy, setIsVideoBusy] = useState(false);
@@ -150,48 +193,163 @@ function App() {
     videoPollRef.current = null;
   }
 
+  async function loadUnitState(nextSelection: VocabularySelection, restorePage: boolean) {
+    const key = unitStorageKey(nextSelection);
+    const words = selectMissionWords(
+      nextSelection.setId,
+      nextSelection.bookId,
+      nextSelection.wordsPerMission,
+      nextSelection.unitNumber
+    );
+    const emptyMastery = createEmptyMastery(words.map((word) => word.id));
+
+    cancelVideoPoll();
+    replacePackUrls(null);
+    replaceVideoUrl(null);
+    setPack(null);
+    setMastery(emptyMastery);
+    setVideo({ status: "idle", progress: 0 });
+    setActiveIndex(0);
+    setSpellInput("");
+
+    try {
+      const [storedPack, storedMastery, storedVideo, storedPage] = await Promise.all([
+        storage.getLesson(key),
+        storage.getMastery(key),
+        storage.getVideo(key),
+        storage.getLearningPageState(key)
+      ]);
+
+      if (storedPack?.assetPromptVersion === TEXT_FREE_ASSET_VERSION) {
+        const hydrated = withObjectUrls(storedPack);
+        replacePackUrls(hydrated);
+        setPack(hydrated);
+      }
+      if (storedMastery) setMastery(storedMastery);
+      if (storedVideo) {
+        if (storedVideo.blob) {
+          const objUrl = URL.createObjectURL(storedVideo.blob);
+          replaceVideoUrl(objUrl);
+          setVideo({ ...storedVideo, url: objUrl });
+        } else {
+          setVideo(storedVideo);
+        }
+      }
+      const urlScreen = readScreenFromUrl();
+      if (restorePage && urlScreen) {
+        setScreen(urlScreen);
+      } else if (restorePage && storedPage) {
+        setActiveIndex(Math.min(storedPage.activeIndex, Math.max(words.length - 1, 0)));
+        setSpellInput(storedPage.spellInput);
+        setScreen(storedPage.screen);
+      } else {
+        setScreen("home");
+      }
+    } catch {
+      setScreen(restorePage ? readScreenFromUrl() ?? "home" : "home");
+      setNotice("Browser storage was unavailable, so this unit will use memory only.");
+    }
+  }
+
+  async function refreshUnitSummaries(targetSelection = selection) {
+    const units = listBookUnits(targetSelection.setId, targetSelection.bookId);
+    const entries = await Promise.all(
+      units.map(async (unit) => {
+        const key = unitStorageKey({ ...targetSelection, unitNumber: unit.unitNumber });
+        try {
+          const [storedPack, storedMastery, storedVideo] = await Promise.all([
+            storage.getLesson(key),
+            storage.getMastery(key),
+            storage.getVideo(key)
+          ]);
+          return [
+            unit.unitNumber,
+            {
+              hasPack: Boolean(storedPack),
+              hasVideo: storedVideo?.status === "completed" && Boolean(storedVideo.blob || storedVideo.url),
+              hasProgress: Boolean(storedMastery && Object.values(storedMastery).some((word) =>
+                Object.values(word).some((lane) => lane.correct > 0 || lane.wrong > 0 || lane.completed)
+              )),
+              complete: storedMastery ? isMissionComplete(storedMastery) : false
+            }
+          ] as const;
+        } catch {
+          return [
+            unit.unitNumber,
+            { hasPack: false, hasVideo: false, hasProgress: false, complete: false }
+          ] as const;
+        }
+      })
+    );
+    setUnitSummaries(Object.fromEntries(entries));
+  }
+
   const activeWord = pack?.words[activeIndex] ?? missionWords[activeIndex];
   const dashboardPack = pack ?? buildSampleLessonPack(missionWords, lessonMeta);
   const missionReady = Boolean(pack);
   const complete = useMemo(() => isMissionComplete(mastery), [mastery]);
   const hasApiKey = settings.apiKey.trim().length > 0;
+  const currentUnitSummary = useMemo<UnitLessonSummary>(
+    () => ({
+      hasPack: Boolean(pack),
+      hasVideo: video.status === "completed" && Boolean(video.blob || video.url),
+      hasProgress: Object.values(mastery).some((word) =>
+        Object.values(word).some((lane) => lane.correct > 0 || lane.wrong > 0 || lane.completed)
+      ),
+      complete
+    }),
+    [complete, mastery, pack, video.blob, video.status, video.url]
+  );
+  const effectiveUnitSummaries = useMemo(
+    () => ({ ...unitSummaries, [selection.unitNumber]: currentUnitSummary }),
+    [currentUnitSummary, selection.unitNumber, unitSummaries]
+  );
+
+  // Resolve the kid's chosen visual style into the descriptor Agnes receives.
+  // "auto" rotates a style per practice group via pickArtStyle; a curated id
+  // fixes the look; a non-empty free-text note overrides the curated descriptor
+  // (sanitized inside resolveStyleDescriptor).
+  const missionSeed = useMemo(() => missionWords.map((word) => word.id).join("-"), [missionWords]);
+  const visualStyle = useMemo<{ id: string; descriptor: string; note?: string }>(
+    () => ({
+      id: profile.visualStyleId ?? DEFAULT_STYLE_ID,
+      descriptor: resolveStyleDescriptor(profile.visualStyleId, profile.visualStyleNote, missionSeed),
+      note: profile.visualStyleNote
+    }),
+    [profile.visualStyleId, profile.visualStyleNote, missionSeed]
+  );
+  const currentStyleLabel = getStyle(profile.visualStyleId ?? DEFAULT_STYLE_ID)?.label ?? "Surprise Me";
+  const currentStyleEmoji = getStyle(profile.visualStyleId ?? DEFAULT_STYLE_ID)?.emoji ?? "🎲";
+
+  // A style pick that would throw away already-generated Agnes media must be
+  // confirmed before regenerating (regen costs API credits). When set, the
+  // ConfirmStyleChange modal is shown; null means no confirmation pending.
+  const [pendingStyle, setPendingStyle] = useState<{ id: string; note?: string; label: string } | null>(null);
+  const [stylePickerOpen, setStylePickerOpen] = useState(false);
+
+  // A short celebratory overlay shown when the kid finishes an activity before
+  // the next one opens — turns the Story→Game→Spelling→Video rail into a
+  // journey rather than a panel swap. Cleared by a timeout after the cheer.
+  const [celebration, setCelebration] = useState<{ cheer: string } | null>(null);
+  const celebrationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  function transitionWithCheer(cheer: string, next: Screen) {
+    if (celebrationTimerRef.current) clearTimeout(celebrationTimerRef.current);
+    setCelebration({ cheer });
+    celebrationTimerRef.current = setTimeout(() => {
+      setCelebration(null);
+      celebrationTimerRef.current = null;
+      setScreen(next);
+    }, 1100);
+  }
 
   useEffect(() => {
     let active = true;
     async function hydrate() {
-      try {
-        const [storedPack, storedMastery, storedVideo] = await Promise.all([
-          storage.getLesson(),
-          storage.getMastery(),
-          storage.getVideo()
-        ]);
-        if (!active) return;
-        if (storedPack?.assetPromptVersion === TEXT_FREE_ASSET_VERSION) {
-          const hydrated = withObjectUrls(storedPack);
-          replacePackUrls(hydrated);
-          setPack(hydrated);
-          const pageState = loadLearningPageState();
-          setActiveIndex(Math.min(pageState.activeIndex, Math.max(hydrated.words.length - 1, 0)));
-          setSpellInput(pageState.spellInput);
-          setScreen(pageState.screen);
-        } else if (storedPack) {
-          setNotice("Stored lesson images used an older prompt. Reload the sample or generate a fresh text-free mission.");
-        }
-        if (storedMastery) setMastery(storedMastery);
-        if (storedVideo) {
-          if (storedVideo.blob) {
-            const objUrl = URL.createObjectURL(storedVideo.blob);
-            replaceVideoUrl(objUrl);
-            setVideo({ ...storedVideo, url: objUrl });
-          } else {
-            setVideo(storedVideo);
-          }
-        }
-      } catch {
-        setNotice("Browser storage was unavailable, so this session will use memory only.");
-      } finally {
-        if (active) setHydrated(true);
-      }
+      await loadUnitState(selection, true);
+      if (!active) return;
+      await refreshUnitSummaries(selection);
+      if (active) setHydrated(true);
     }
     hydrate();
     return () => {
@@ -207,39 +365,23 @@ function App() {
       replacePackUrls(null);
       replaceVideoUrl(null);
       cancelVideoPoll();
+      if (celebrationTimerRef.current) clearTimeout(celebrationTimerRef.current);
     },
     []
   );
 
   useEffect(() => {
     if (!hydrated) return;
+    writeScreenToUrl(screen);
     if (screen === "setup") return;
-    saveLearningPageState({
+    const pageState = {
       screen,
       activeIndex,
       spellInput
-    });
-  }, [activeIndex, screen, spellInput]);
-
-  // When the parent changes the vocabulary set/book/count, the cached pack no
-  // longer matches the words. Drop it and start a fresh mission so the new book
-  // takes effect (parents re-generate images deliberately). The parent stays on
-  // whatever screen they are on — typically the settings screen.
-  useEffect(() => {
-    if (!hydrated) return;
-    cancelVideoPoll();
-    replacePackUrls(null);
-    replaceVideoUrl(null);
-    setPack(null);
-    setActiveIndex(0);
-    setMastery(createEmptyMastery(missionWords.map((word) => word.id)));
-    setVideo({ status: "idle", progress: 0 });
-    clearSavedLearningPageState();
-    storage.deleteLesson().catch(() => {});
-    storage.deleteVideo().catch(() => {});
-    setNotice("Vocabulary updated. A fresh mission is ready — generate pictures when you like.");
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [missionWords]);
+    };
+    saveLearningPageState(pageState);
+    storage.saveLearningPageState(pageState, activeUnitKey).catch(() => {});
+  }, [activeIndex, activeUnitKey, hydrated, screen, spellInput]);
 
   function persistSettings(next: AgnesSettings) {
     setSettings(next);
@@ -250,6 +392,16 @@ function App() {
     const resolved = resolveSelection(next);
     setSelection(resolved);
     saveVocabularySelection(resolved);
+  }
+
+  async function switchToUnit(next: VocabularySelection, openDetail = true) {
+    const resolved = resolveSelection(next);
+    persistSelection(resolved);
+    setDetailUnitNumber(resolved.unitNumber);
+    await loadUnitState(resolved, false);
+    await refreshUnitSummaries(resolved);
+    const unit = listBookUnits(resolved.setId, resolved.bookId).find((item) => item.unitNumber === resolved.unitNumber);
+    setNotice(openDetail && unit ? `Lesson detail ready: Unit ${unit.unitNumber} ${unit.title}.` : "Lesson book updated.");
   }
 
   function persistProfile(next: ChildProfile) {
@@ -264,17 +416,20 @@ function App() {
 
   async function persistMastery(next: MissionMastery) {
     setMastery(next);
-    await storage.saveMastery(next);
+    await storage.saveMastery(next, activeUnitKey);
+    await refreshUnitSummaries();
   }
 
-  async function startMission(forceSample = false) {
-    if (isGenerating) return;
+  async function startMission(forceSample = false, nextScreen: Screen = "home"): Promise<LessonPack | null> {
+    if (isGenerating) return null;
     setGenerating(true);
     cancelVideoPoll();
     setNotice(forceSample || !hasApiKey ? "Loading the built-in sample mission." : "Asking Agnes to generate your lesson images.");
     try {
       const nextPack =
-        hasApiKey && !forceSample ? await buildAgnesLessonPack(missionWords, settings, lessonMeta) : buildSampleLessonPack(missionWords, lessonMeta);
+        hasApiKey && !forceSample
+          ? await buildAgnesLessonPack(missionWords, settings, lessonMeta, visualStyle)
+          : buildSampleLessonPack(missionWords, lessonMeta, { id: visualStyle.id, note: visualStyle.note });
       const nextMastery = createEmptyMastery(nextPack.words.map((word) => word.id));
       replacePackUrls(nextPack);
       replaceVideoUrl(null);
@@ -282,48 +437,81 @@ function App() {
       setMastery(nextMastery);
       setVideo({ status: "idle", progress: 0 });
       setActiveIndex(0);
-      setScreen("home");
-      await Promise.all([storage.saveLesson(nextPack), storage.saveMastery(nextMastery), storage.saveVideo({ status: "idle", progress: 0 })]);
+      setScreen(nextScreen);
+      await Promise.all([
+        storage.saveLesson(nextPack, activeUnitKey),
+        storage.saveMastery(nextMastery, activeUnitKey),
+        storage.saveVideo({ status: "idle", progress: 0 }, activeUnitKey)
+      ]);
+      await refreshUnitSummaries();
       setNotice(nextPack.source === "agnes" ? "Agnes lesson pack saved in this browser." : "Sample mission saved in this browser.");
+      return nextPack;
     } catch (error) {
-      const fallback = buildSampleLessonPack(missionWords, lessonMeta);
+      const fallback = buildSampleLessonPack(missionWords, lessonMeta, { id: visualStyle.id, note: visualStyle.note });
       replacePackUrls(fallback);
       setPack(fallback);
       setMastery(createEmptyMastery(fallback.words.map((word) => word.id)));
-      setScreen("home");
-      await storage.saveLesson(fallback);
+      setVideo({ status: "idle", progress: 0 });
+      setScreen(nextScreen);
+      await storage.saveLesson(fallback, activeUnitKey);
+      await refreshUnitSummaries();
       setNotice(error instanceof Error ? `${error.message}. Loaded sample mission instead.` : "Loaded sample mission instead.");
+      return fallback;
     } finally {
       setGenerating(false);
     }
   }
 
+  // Re-generate the current mission's pictures in a new visual style WITHOUT
+  // resetting mastery — the kid keeps their Story/Game/Spelling progress. Used
+  // by the style-change "Redraw now" confirmation. Mirrors the generation shape
+  // of startMission but preserves activeIndex/mastery.
   async function regeneratePictures() {
     if (isGenerating) return;
+    if (!hasApiKey) return;
     setGenerating(true);
-    setNotice(hasApiKey ? "Regenerating cached lesson pictures." : "Refreshing the built-in sample pictures.");
+    setNotice("Redrawing your pictures in the new style.");
     try {
-      const nextPack = hasApiKey ? await buildAgnesLessonPack(missionWords, settings, lessonMeta) : buildSampleLessonPack(missionWords, lessonMeta);
+      const nextPack = await buildAgnesLessonPack(missionWords, settings, lessonMeta, visualStyle);
       replacePackUrls(nextPack);
       setPack(nextPack);
       setActiveIndex((value) => Math.min(value, Math.max(nextPack.words.length - 1, 0)));
-      await storage.saveLesson(nextPack);
-      setNotice(nextPack.source === "agnes" ? "Cached Agnes pictures were regenerated." : "Sample pictures were refreshed.");
+      await storage.saveLesson(nextPack, activeUnitKey);
+      await refreshUnitSummaries();
+      setNotice("Pictures redrawn in your new style.");
     } catch (error) {
-      setNotice(error instanceof Error ? error.message : "Could not regenerate cached pictures.");
+      setNotice(error instanceof Error ? error.message : "Could not redraw pictures.");
     } finally {
       setGenerating(false);
+    }
+  }
+
+  // Apply a style the kid just picked. If real Agnes media already exists for
+  // the current pack, surface a confirmation modal (regen costs credits) before
+  // redrawing; otherwise just persist the pick — the next mission uses it.
+  function applyStylePick(id: string, note?: string) {
+    const label = getStyle(id)?.label ?? "Surprise Me";
+    const styleChanged = id !== (profile.visualStyleId ?? DEFAULT_STYLE_ID) || (note ?? "") !== (profile.visualStyleNote ?? "");
+    persistProfile({ ...profile, visualStyleId: id, visualStyleNote: note });
+    setStylePickerOpen(false);
+    if (!styleChanged) return;
+    const hasGeneratedMedia = pack?.source === "agnes" || (video.status === "completed" && Boolean(video.blob || video.url));
+    if (hasGeneratedMedia && hasApiKey) {
+      setPendingStyle({ id, note, label });
+    } else {
+      setNotice(`Style set to ${label}. Your next mission will use it.`);
     }
   }
 
   async function deleteCachedPictures() {
     try {
-      await storage.deleteLesson();
+      await storage.deleteLesson(activeUnitKey);
       replacePackUrls(null);
       setPack(null);
       setActiveIndex(0);
       setScreen("home");
-      setNotice("Cached lesson pictures were deleted. The sample mission will stay visible until parents regenerate pictures.");
+      await refreshUnitSummaries();
+      setNotice("Selected unit pictures were cleared. Progress was kept.");
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "Could not delete cached pictures.");
     }
@@ -333,11 +521,12 @@ function App() {
     const idleVideo: VideoTaskState = { status: "idle", progress: 0 };
     try {
       cancelVideoPoll();
-      await storage.deleteVideo();
+      await storage.deleteVideo(activeUnitKey);
       replaceVideoUrl(null);
       setVideo(idleVideo);
       setIsVideoBusy(false);
-      setNotice("Cached reward video was deleted.");
+      await refreshUnitSummaries();
+      setNotice("Selected unit reward video was cleared. Progress was kept.");
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "Could not delete cached video.");
     }
@@ -386,15 +575,15 @@ function App() {
     }
 
     try {
-      const style = pickArtStyle(pack.words.map((word) => word.id).join("-"));
       // Agnes expects the seed image as a data URI string — blob: URLs are
       // tab-scoped and won't fetch over HTTP. Re-encode the cached Blob.
       const seedDataUri = pack.assets[0]?.imageBlob
         ? await blobToDataUri(pack.assets[0].imageBlob)
         : undefined;
-      const task = await createAgnesVideoTask(settings, videoRewardPrompt(pack, style), seedDataUri);
+      const task = await createAgnesVideoTask(settings, videoRewardPrompt(pack, visualStyle.descriptor), seedDataUri);
       setVideo(task);
-      await storage.saveVideo(task);
+      await storage.saveVideo(task, activeUnitKey);
+      await refreshUnitSummaries();
       setNotice("Video reward task created. You can poll while Agnes works.");
     } catch (error) {
       const failed = {
@@ -403,7 +592,8 @@ function App() {
         error: error instanceof Error ? error.message : "Video generation failed."
       };
       setVideo(failed);
-      await storage.saveVideo(failed);
+      await storage.saveVideo(failed, activeUnitKey);
+      await refreshUnitSummaries();
     }
   }
 
@@ -419,10 +609,12 @@ function App() {
         replaceVideoUrl(objUrl);
         const final: VideoTaskState = { ...next, blob, url: objUrl };
         setVideo(final);
-        await storage.saveVideo(final);
+        await storage.saveVideo(final, activeUnitKey);
+        await refreshUnitSummaries();
       } else {
         setVideo(next);
-        await storage.saveVideo(next);
+        await storage.saveVideo(next, activeUnitKey);
+        await refreshUnitSummaries();
       }
     } catch (error) {
       setVideo({
@@ -433,14 +625,17 @@ function App() {
     }
   }
 
-  // Parent-side auto-polling variant: creates a fresh video task and walks the
-  // Agnes status endpoint until it completes or fails, downloading the bytes
+  function needsRewardVideo(): boolean {
+    return video.status === "idle" || video.status === "failed" || (video.status === "completed" && !video.url && !video.blob);
+  }
+
+  // Lesson-start auto-generation variant: creates a fresh video task and walks
+  // the Agnes status endpoint until it completes or fails, downloading the bytes
   // on success. Cancellation tokens unwind cleanly when the parent deletes the
   // video, switches vocabulary, or unmounts the app mid-poll.
-  async function regenerateVideo() {
-    if (!pack || isVideoBusy) return;
+  async function generateRewardVideoForPack(targetPack: LessonPack) {
+    if (isVideoBusy) return;
     if (!hasApiKey) {
-      setNotice("Add an Agnes API key to generate a reward video.");
       return;
     }
 
@@ -451,16 +646,15 @@ function App() {
 
     try {
       setNotice("Asking Agnes to generate the reward video…");
-      const style = pickArtStyle(pack.words.map((word) => word.id).join("-"));
-      const seedDataUri = pack.assets[0]?.imageBlob
-        ? await blobToDataUri(pack.assets[0].imageBlob)
+      const seedDataUri = targetPack.assets[0]?.imageBlob
+        ? await blobToDataUri(targetPack.assets[0].imageBlob)
         : undefined;
-      const task = await createAgnesVideoTask(settings, videoRewardPrompt(pack, style), seedDataUri);
+      const task = await createAgnesVideoTask(settings, videoRewardPrompt(targetPack, visualStyle.descriptor), seedDataUri);
       if (token.cancelled) return;
 
       const queued: VideoTaskState = { ...task, blob: undefined, url: undefined };
       setVideo(queued);
-      await storage.saveVideo(queued);
+      await storage.saveVideo(queued, activeUnitKey);
 
       const videoId = task.videoId;
       if (!videoId) throw new Error("Agnes did not return a video id.");
@@ -481,13 +675,15 @@ function App() {
           replaceVideoUrl(objUrl);
           const final: VideoTaskState = { ...next, blob, url: objUrl };
           setVideo(final);
-          await storage.saveVideo(final);
+          await storage.saveVideo(final, activeUnitKey);
+          await refreshUnitSummaries();
           setNotice("Reward video cached.");
           return;
         }
         if (next.status === "failed") {
           setVideo(next);
-          await storage.saveVideo(next);
+          await storage.saveVideo(next, activeUnitKey);
+          await refreshUnitSummaries();
           setNotice(next.error ?? "Reward video generation failed.");
           return;
         }
@@ -506,9 +702,35 @@ function App() {
     }
   }
 
+  async function beginLesson() {
+    let lessonPack = pack;
+    if (!lessonPack) {
+      lessonPack = await startMission(false, "learn");
+    } else {
+      setScreen("learn");
+    }
+    if (lessonPack && needsRewardVideo()) {
+      void generateRewardVideoForPack(lessonPack);
+    }
+  }
+
+  async function chooseLessonUnit(unitNumber: number) {
+    await switchToUnit({ ...selection, unitNumber }, true);
+  }
+
+  const isLessonPicker = screen === "home";
+
   return (
-    <div className={`app-shell theme-${profile.gender}`}>
-      <TopBar profile={profile} missionTitle={missionTitle} onSetup={() => setScreen("setup")} />
+    <div className={`app-shell theme-${profile.gender} ${isLessonPicker ? "lesson-picker-shell" : ""}`}>
+      <TopBar
+        profile={profile}
+        missionTitle={missionTitle}
+        styleEmoji={currentStyleEmoji}
+        styleLabel={currentStyleLabel}
+        compact={isLessonPicker}
+        onPickStyle={() => setStylePickerOpen(true)}
+        onSetup={() => setScreen("setup")}
+      />
       <main className="main-stage">
         {screen === "setup" ? (
           <section className="setup-panel">
@@ -522,30 +744,31 @@ function App() {
               parentControls={parentControls}
               selection={selection}
               vocabularySets={vocabularySets}
+              bookUnits={bookUnits}
+              unitSummaries={effectiveUnitSummaries}
               unlocked={parentUnlocked}
               pack={pack}
               video={video}
               onSettings={persistSettings}
               onProfile={persistProfile}
               onParentControls={persistParentControls}
-              onSelection={persistSelection}
+              onSelection={(next) => void switchToUnit(next, false)}
               onUnlock={() => setParentUnlocked(true)}
-              onStart={() => startMission(false)}
-              onRegeneratePictures={regeneratePictures}
               onDeletePictures={deleteCachedPictures}
               onDeleteVideo={deleteCachedVideo}
-              onRegenerateVideo={regenerateVideo}
-              isGenerating={isGenerating}
               isVideoBusy={isVideoBusy}
             />
             <button className="secondary-button setup-back" onClick={() => setScreen("home")}>
-              Back to Mission
+              Return to Learning
               <ArrowRight size={18} />
             </button>
           </section>
         ) : (
           <MissionDashboard
             pack={dashboardPack}
+            units={bookUnits}
+            selection={selection}
+            unitSummaries={effectiveUnitSummaries}
             settings={settings}
             mastery={mastery}
             video={video}
@@ -559,9 +782,10 @@ function App() {
             isGenerating={isGenerating}
             missionReady={missionReady}
             notice={notice}
-            onSetup={() => setScreen("setup")}
-            onGenerate={() => startMission(false)}
-            onSample={() => startMission(true)}
+            celebration={celebration}
+            onGenerate={beginLesson}
+            onSample={() => startMission(true, screen === "home" ? "learn" : "home")}
+            onSelectUnit={(unitNumber) => void chooseLessonUnit(unitNumber)}
             onBackWord={() => setActiveIndex((value) => Math.max(0, value - 1))}
             onNextWord={() => setActiveIndex((value) => Math.min(dashboardPack.words.length - 1, value + 1))}
             onMarkMeaning={() => mark(activeWord, "meaning", true)}
@@ -577,15 +801,45 @@ function App() {
             onCreateVideo={startVideoReward}
             onPollVideo={pollVideoReward}
             onGameAnswer={(word, correct) => mark(word, "meaning", correct)}
+            onStoryContinue={() => transitionWithCheer("Story complete!", "game")}
+            onGameContinue={() => transitionWithCheer("Great matching!", "spell")}
+            onSpellContinue={() => transitionWithCheer("Super spelling!", "reward")}
+            onRewardSummary={() => transitionWithCheer("Mission complete! 🎉", "summary")}
           />
         )}
       </main>
+      {stylePickerOpen && (
+        <VisualStylePicker
+          currentId={profile.visualStyleId ?? DEFAULT_STYLE_ID}
+          currentNote={profile.visualStyleNote}
+          onClose={() => setStylePickerOpen(false)}
+          onApply={(id, note) => applyStylePick(id, note)}
+        />
+      )}
+      {pendingStyle && (
+        <ConfirmStyleChange
+          label={pendingStyle.label}
+          hasVideo={Boolean(video.status === "completed" && (video.blob || video.url))}
+          onCancel={() => setPendingStyle(null)}
+          onApplyNext={() => {
+            setPendingStyle(null);
+            setNotice(`Style set to ${pendingStyle.label}. Your next mission will use it.`);
+          }}
+          onRedraw={() => {
+            setPendingStyle(null);
+            void regeneratePictures();
+          }}
+        />
+      )}
     </div>
   );
 }
 
 function MissionDashboard({
   pack,
+  units,
+  selection,
+  unitSummaries,
   settings,
   mastery,
   video,
@@ -599,9 +853,9 @@ function MissionDashboard({
   isGenerating,
   missionReady,
   notice,
-  onSetup,
   onGenerate,
   onSample,
+  onSelectUnit,
   onBackWord,
   onNextWord,
   onMarkMeaning,
@@ -616,9 +870,17 @@ function MissionDashboard({
   onCheckSpell,
   onCreateVideo,
   onPollVideo,
-  onGameAnswer
+  onGameAnswer,
+  onStoryContinue,
+  onGameContinue,
+  onSpellContinue,
+  onRewardSummary,
+  celebration
 }: {
   pack: LessonPack;
+  units: VocabularyUnit[];
+  selection: VocabularySelection;
+  unitSummaries: Record<number, UnitLessonSummary>;
   settings: AgnesSettings;
   mastery: MissionMastery;
   video: VideoTaskState;
@@ -632,9 +894,9 @@ function MissionDashboard({
   isGenerating: boolean;
   missionReady: boolean;
   notice: string;
-  onSetup: () => void;
   onGenerate: () => void;
   onSample: () => void;
+  onSelectUnit: (unitNumber: number) => void;
   onBackWord: () => void;
   onNextWord: () => void;
   onMarkMeaning: () => void;
@@ -650,7 +912,13 @@ function MissionDashboard({
   onCreateVideo: () => void;
   onPollVideo: () => void;
   onGameAnswer: (word: WordEntry, correct: boolean) => void;
+  onStoryContinue: () => void;
+  onGameContinue: () => void;
+  onSpellContinue: () => void;
+  onRewardSummary: () => void;
+  celebration: { cheer: string } | null;
 }) {
+  const showLessonBoard = screen === "home";
   return (
     <section className="mission-dashboard" aria-label="Word Planet mission dashboard">
       <div className="dashboard-notice-row">
@@ -658,53 +926,211 @@ function MissionDashboard({
         {isGenerating && <RequestSpinner label="Working on your mission…" />}
       </div>
 
-      <div className="learning-hero">
-        <section className="picture-panel">
-          <div className="picture-toolbar">
-            <button className="icon-button" onClick={onBackWord} disabled={activeIndex === 0} aria-label="Previous word">
-              <ChevronLeft />
-            </button>
-            <span>{activeIndex + 1} / {pack.words.length}</span>
-          </div>
-          <img src={getWordImage(pack, activeWord.id)} alt={`${activeWord.word} illustration`} />
-        </section>
-
-        <CurrentWordPanel
-          word={activeWord}
-          settings={settings}
-          onNext={onNextWord}
-          onMarkMeaning={onMarkMeaning}
-          onSay={onSay}
-          speechMessage={speechMessage}
+      {showLessonBoard ? (
+        <LessonBoard
+          units={units}
+          selection={selection}
+          summaries={unitSummaries}
+          words={pack.words}
+          missionReady={missionReady}
+          isGenerating={isGenerating}
+          onSelectUnit={onSelectUnit}
+          onStart={onGenerate}
+          onSample={onSample}
         />
+      ) : (
+        <>
+          <div className="learning-hero">
+            <section className="picture-panel">
+              <div className="picture-toolbar">
+                <button className="icon-button" onClick={onBackWord} disabled={activeIndex === 0} aria-label="Previous word">
+                  <ChevronLeft />
+                </button>
+                <span>{activeIndex + 1} / {pack.words.length}</span>
+              </div>
+              <img src={getWordImage(pack, activeWord.id)} alt={`${activeWord.word} illustration`} />
+            </section>
 
-        <ProgressPanel mastery={mastery} />
+            <CurrentWordPanel
+              word={activeWord}
+              settings={settings}
+              onNext={onNextWord}
+              onMarkMeaning={onMarkMeaning}
+              onSay={onSay}
+              speechMessage={speechMessage}
+            />
+
+            <ProgressPanel mastery={mastery} />
+          </div>
+
+          <ActivityRail
+            pack={pack}
+            activeWord={activeWord}
+            settings={settings}
+            mastery={mastery}
+            screen={screen}
+            video={video}
+            complete={complete}
+            missionReady={missionReady}
+            spellInput={spellInput}
+            onGenerate={onGenerate}
+            onSample={onSample}
+            onStory={onStory}
+            onGame={onGame}
+            onSpell={onSpell}
+            onReward={onReward}
+            onSummary={onSummary}
+            onHome={onHome}
+            onInput={onInput}
+            onCheckSpell={onCheckSpell}
+            onCreateVideo={onCreateVideo}
+            onPollVideo={onPollVideo}
+            onGameAnswer={onGameAnswer}
+            onStoryContinue={onStoryContinue}
+            onGameContinue={onGameContinue}
+            onSpellContinue={onSpellContinue}
+            onRewardSummary={onRewardSummary}
+          />
+        </>
+      )}
+
+      {!showLessonBoard && (
+        <MissionDock
+          active={screen}
+          complete={complete}
+          missionReady={missionReady}
+          video={video}
+          onLearn={onHome}
+          onStory={onStory}
+          onGame={missionReady ? onGame : onGenerate}
+          onSpell={onSpell}
+          onReward={onReward}
+          onSummary={onSummary}
+        />
+      )}
+      {celebration && <CelebrationOverlay cheer={celebration.cheer} />}
+    </section>
+  );
+}
+
+function unitStatusLabel(summary?: UnitLessonSummary): string {
+  if (summary?.complete) return "Complete";
+  if (summary?.hasProgress || summary?.hasPack || summary?.hasVideo) return "In progress";
+  return "Not started";
+}
+
+function compactUnitStatusLabel(summary?: UnitLessonSummary): string {
+  if (summary?.complete) return "Done";
+  if (summary?.hasProgress || summary?.hasPack || summary?.hasVideo) return "Started";
+  return "New";
+}
+
+function LessonBoard({
+  units,
+  selection,
+  summaries,
+  words,
+  missionReady,
+  isGenerating,
+  onSelectUnit,
+  onStart,
+  onSample
+}: {
+  units: VocabularyUnit[];
+  selection: VocabularySelection;
+  summaries: Record<number, UnitLessonSummary>;
+  words: WordEntry[];
+  missionReady: boolean;
+  isGenerating: boolean;
+  onSelectUnit: (unitNumber: number) => void;
+  onStart: () => void;
+  onSample: () => void;
+}) {
+  const selectedUnit = units.find((unit) => unit.unitNumber === selection.unitNumber);
+  const selectedSummary = summaries[selection.unitNumber];
+  const selectedStatus = unitStatusLabel(selectedSummary);
+
+  return (
+    <section className="lesson-board" aria-label="Choose a lesson">
+      <div className="lesson-board-header">
+        <div>
+          <h2>Choose a lesson</h2>
+          <p>Pick a unit, preview the words, then start when you are ready.</p>
+        </div>
+        <span className="lesson-count">{units.length} units</span>
       </div>
 
-      <ActivityRail
-        pack={pack}
-        activeWord={activeWord}
-        settings={settings}
-        screen={screen}
-        video={video}
-        complete={complete}
-        missionReady={missionReady}
-        spellInput={spellInput}
-        onGenerate={onGenerate}
-        onSample={onSample}
-        onStory={onStory}
-        onGame={onGame}
-        onSpell={onSpell}
-        onReward={onReward}
-        onSummary={onSummary}
-        onInput={onInput}
-        onCheckSpell={onCheckSpell}
-        onCreateVideo={onCreateVideo}
-        onPollVideo={onPollVideo}
-        onGameAnswer={onGameAnswer}
-      />
+      <div className="lesson-unit-grid">
+        {units.map((unit) => {
+          const summary = summaries[unit.unitNumber];
+          const selected = unit.unitNumber === selection.unitNumber;
+          return (
+            <button
+              key={unit.unitNumber}
+              className={`lesson-unit-card ${selected ? "selected" : ""}`}
+              type="button"
+              aria-label={`Unit ${unit.unitNumber}: ${unit.title}. ${unit.wordCount} words. ${unitStatusLabel(summary)}. ${
+                summary?.hasPack ? "Pictures saved" : "Pictures needed"
+              }. ${summary?.hasVideo ? "Video saved" : "Video later"}.`}
+              onClick={() => onSelectUnit(unit.unitNumber)}
+            >
+              <span className="lesson-unit-number">Unit {unit.unitNumber}</span>
+              <strong>{unit.title}</strong>
+              <span className="lesson-card-meta">
+                <small>{unit.wordCount} words</small>
+                <span className={`lesson-status ${unitStatusLabel(summary).toLowerCase().replace(" ", "-")}`}>
+                  {compactUnitStatusLabel(summary)}
+                </span>
+              </span>
+              <span className="lesson-media-dots" aria-hidden="true">
+                <span className={`media-dot ${summary?.hasPack ? "saved" : ""}`} />
+                <span className={`media-dot video ${summary?.hasVideo ? "saved" : ""}`} />
+              </span>
+            </button>
+          );
+        })}
+      </div>
 
-      <BottomNav profile={profile} active={screen} onHome={onHome} onSetup={onSetup} onSummary={onSummary} />
+      <section className="lesson-detail-panel" aria-label="Lesson detail">
+        <div>
+          <span className="detail-kicker">Lesson detail</span>
+          <h3>
+            Unit {selectedUnit?.unitNumber ?? selection.unitNumber}
+            {selectedUnit ? `: ${selectedUnit.title}` : ""}
+          </h3>
+          <p>{selectedStatus} · {words.length} mission words</p>
+        </div>
+        <div className="lesson-word-preview">
+          {words.map((word) => (
+            <span key={word.id}>{word.word}</span>
+          ))}
+        </div>
+        <div className="button-row">
+          <button
+            className={`primary-button ${isGenerating ? "busy-button" : ""}`}
+            type="button"
+            onClick={() => {
+              if (!isGenerating) onStart();
+            }}
+            aria-disabled={isGenerating}
+            data-busy={isGenerating ? "true" : undefined}
+          >
+            {missionReady ? "Resume Lesson" : isGenerating ? "Starting..." : "Start Lesson"}
+            <ArrowRight size={18} />
+          </button>
+          <button
+            className={`secondary-button ${isGenerating ? "busy-button" : ""}`}
+            type="button"
+            onClick={() => {
+              if (!isGenerating) onSample();
+            }}
+            aria-disabled={isGenerating}
+            data-busy={isGenerating ? "true" : undefined}
+          >
+            Use Sample Mission
+          </button>
+        </div>
+      </section>
     </section>
   );
 }
@@ -770,6 +1196,7 @@ function ActivityRail({
   pack,
   activeWord,
   settings,
+  mastery,
   screen,
   video,
   complete,
@@ -782,15 +1209,21 @@ function ActivityRail({
   onSpell,
   onReward,
   onSummary,
+  onHome,
   onInput,
   onCheckSpell,
   onCreateVideo,
   onPollVideo,
-  onGameAnswer
+  onGameAnswer,
+  onStoryContinue,
+  onGameContinue,
+  onSpellContinue,
+  onRewardSummary
 }: {
   pack: LessonPack;
   activeWord: WordEntry;
   settings: AgnesSettings;
+  mastery: MissionMastery;
   screen: Screen;
   video: VideoTaskState;
   complete: boolean;
@@ -803,11 +1236,16 @@ function ActivityRail({
   onSpell: () => void;
   onReward: () => void;
   onSummary: () => void;
+  onHome: () => void;
   onInput: (value: string) => void;
   onCheckSpell: () => void;
   onCreateVideo: () => void;
   onPollVideo: () => void;
   onGameAnswer: (word: WordEntry, correct: boolean) => void;
+  onStoryContinue: () => void;
+  onGameContinue: () => void;
+  onSpellContinue: () => void;
+  onRewardSummary: () => void;
 }) {
   return (
     <section className="activity-rail" aria-label="Mission activities">
@@ -829,7 +1267,7 @@ function ActivityRail({
         subtitle="图片挑战"
         image={getWordImage(pack, pack.words[1]?.id ?? activeWord.id)}
         caption={`Which one is a ${activeWord.word}?`}
-        buttonText={missionReady ? "开始游戏" : "生成课程"}
+        buttonText={missionReady ? "开始游戏" : "开始课程"}
         onClick={missionReady ? onGame : onGenerate}
         completed={screen === "spell" || screen === "reward" || screen === "summary"}
       />
@@ -856,8 +1294,8 @@ function ActivityRail({
         completed={video.status === "completed"}
       />
 
-      {screen === "story" && <StoryQuestInline pack={pack} onContinue={onGame} />}
-      {screen === "game" && <PictureGameInline pack={pack} onAnswer={onGameAnswer} onContinue={onSpell} />}
+      {screen === "story" && <StoryQuestInline pack={pack} onContinue={onStoryContinue} />}
+      {screen === "game" && <PictureGameInline pack={pack} onAnswer={onGameAnswer} onContinue={onGameContinue} />}
       {screen === "spell" && (
         <SpellingInline
           word={activeWord}
@@ -865,7 +1303,7 @@ function ActivityRail({
           spellInput={spellInput}
           onInput={onInput}
           onCheck={onCheckSpell}
-          onContinue={onReward}
+          onContinue={onSpellContinue}
         />
       )}
       {screen === "reward" && (
@@ -874,10 +1312,11 @@ function ActivityRail({
           video={video}
           onCreate={onCreateVideo}
           onPoll={onPollVideo}
-          onSummary={onSummary}
+          onSummary={onRewardSummary}
           onSample={onSample}
         />
       )}
+      {screen === "summary" && <SummaryScreen mastery={mastery} onContinue={onHome} onPracticeAgain={onSpell} />}
     </section>
   );
 }
@@ -1118,47 +1557,138 @@ function RewardInline({
   );
 }
 
-function BottomNav({
-  profile,
+type MissionDockItem = {
+  id: "learn" | "story" | "game" | "spell" | "reward" | "summary";
+  label: string;
+  detail: string;
+  icon: LucideIcon;
+  completed: boolean;
+  disabled?: boolean;
+  onClick: () => void;
+};
+
+function MissionDock({
   active,
-  onHome,
-  onSetup,
+  complete,
+  missionReady,
+  video,
+  onLearn,
+  onStory,
+  onGame,
+  onSpell,
+  onReward,
   onSummary
 }: {
-  profile: ChildProfile;
   active: Screen;
-  onHome: () => void;
-  onSetup: () => void;
+  complete: boolean;
+  missionReady: boolean;
+  video: VideoTaskState;
+  onLearn: () => void;
+  onStory: () => void;
+  onGame: () => void;
+  onSpell: () => void;
+  onReward: () => void;
   onSummary: () => void;
 }) {
+  const activeStep = active === "home" || active === "learn" ? "learn" : active;
+  const items: MissionDockItem[] = [
+    {
+      id: "learn",
+      label: "Learn",
+      detail: "Words",
+      icon: BookOpen,
+      completed: active !== "home" && active !== "learn",
+      onClick: onLearn
+    },
+    {
+      id: "story",
+      label: "Story",
+      detail: missionReady ? "Quest" : "Load first",
+      icon: ClipboardList,
+      completed: ["game", "spell", "reward", "summary"].includes(active),
+      disabled: !missionReady,
+      onClick: onStory
+    },
+    {
+      id: "game",
+      label: "Game",
+      detail: missionReady ? "Picture" : "Start",
+      icon: Gamepad2,
+      completed: ["spell", "reward", "summary"].includes(active),
+      onClick: onGame
+    },
+    {
+      id: "spell",
+      label: "Spell",
+      detail: "Letters",
+      icon: Pencil,
+      completed: ["reward", "summary"].includes(active),
+      disabled: !missionReady,
+      onClick: onSpell
+    },
+    {
+      id: "reward",
+      label: "Reward",
+      detail: video.status === "completed" ? "Ready" : "Video",
+      icon: Play,
+      completed: video.status === "completed" || active === "summary",
+      disabled: !missionReady,
+      onClick: onReward
+    },
+    {
+      id: "summary",
+      label: "Summary",
+      detail: complete ? "Done" : "Locked",
+      icon: Trophy,
+      completed: complete,
+      disabled: !complete && active !== "reward" && active !== "summary",
+      onClick: onSummary
+    }
+  ];
+
   return (
-    <nav className="bottom-nav" aria-label="Main sections">
-      <button className={active === "home" || active === "learn" ? "active" : ""} onClick={onHome}>
-        <BookOpen />
-        <span>学习</span>
-      </button>
-      <button className={active === "story" || active === "game" || active === "spell" ? "active" : ""} onClick={onHome}>
-        <ClipboardList />
-        <span>任务</span>
-      </button>
-      <button onClick={onHome}>
-        <Backpack />
-        <span>我的背包</span>
-      </button>
-      <button className={active === "summary" ? "active" : ""} onClick={onSummary}>
-        <Trophy />
-        <span>排行榜</span>
-      </button>
-      <button onClick={onSetup}>
-        <Users />
-        <span>家长中心</span>
-      </button>
-      <span className="bottom-profile">{profile.nickname}</span>
+    <nav className="mission-dock" aria-label="Mission steps">
+      {items.map((item, index) => {
+        const Icon = item.icon;
+        const status = item.id === activeStep ? "active" : item.completed ? "complete" : item.disabled ? "locked" : "ready";
+        return (
+          <button
+            key={item.id}
+            className={`mission-dock-item ${status}`}
+            onClick={item.onClick}
+            disabled={item.disabled}
+            aria-current={item.id === activeStep ? "step" : undefined}
+          >
+            <span className="dock-step">{item.completed ? <Check size={16} /> : index + 1}</span>
+            <Icon className="dock-icon" />
+            <span className="dock-copy">
+              <strong>{item.label}</strong>
+              <small>{item.detail}</small>
+            </span>
+          </button>
+        );
+      })}
     </nav>
   );
 }
 
-function TopBar({ profile, missionTitle, onSetup }: { profile: ChildProfile; missionTitle: string; onSetup: () => void }) {
+function TopBar({
+  profile,
+  missionTitle,
+  styleEmoji,
+  styleLabel,
+  compact,
+  onPickStyle,
+  onSetup
+}: {
+  profile: ChildProfile;
+  missionTitle: string;
+  styleEmoji: string;
+  styleLabel: string;
+  compact: boolean;
+  onPickStyle: () => void;
+  onSetup: () => void;
+}) {
   return (
     <header className="top-bar">
       <div className="brand-mark">
@@ -1174,12 +1704,21 @@ function TopBar({ profile, missionTitle, onSetup }: { profile: ChildProfile; mis
         <strong>{missionTitle}</strong>
       </div>
       <div className="top-actions">
-        <span className="star-pill">
-          <Star size={19} fill="currentColor" /> 120
-        </span>
-        <span className="star-pill gem-pill">
-          <Gem size={18} fill="currentColor" /> 25
-        </span>
+        {!compact && (
+          <>
+            <button className="style-chip" onClick={onPickStyle} aria-label={`Visual style: ${styleLabel}. Tap to change.`}>
+              <span className="style-chip-emoji">{styleEmoji}</span>
+              <span className="style-chip-label">{styleLabel}</span>
+              <Sparkles size={15} />
+            </button>
+            <span className="star-pill">
+              <Star size={19} fill="currentColor" /> 120
+            </span>
+            <span className="star-pill gem-pill">
+              <Gem size={18} fill="currentColor" /> 25
+            </span>
+          </>
+        )}
         <button className="avatar-button" onClick={onSetup}>
           <span className="avatar-face">{profile.gender === "girl" ? "👧" : "👦"}</span>
           <span>{profile.nickname}</span>
@@ -1191,6 +1730,7 @@ function TopBar({ profile, missionTitle, onSetup }: { profile: ChildProfile; mis
 }
 
 function Notice({ text }: { text: string }) {
+  if (!text) return null;
   return (
     <div className="notice">
       <Sparkles size={18} />
@@ -1204,6 +1744,145 @@ function RequestSpinner({ label }: { label: string }) {
     <div className="request-spinner" role="status" aria-live="polite">
       <Loader2 size={18} className="spin" />
       <span>{label}</span>
+    </div>
+  );
+}
+
+// Kid-facing visual style picker. A grid of curated "world" looks plus a
+// free-text "describe your world" field. Confirming calls onApply with the
+// chosen id and (optionally) the sanitized note; the App decides whether to
+// regenerate immediately or queue the change for the next mission.
+function VisualStylePicker({
+  currentId,
+  currentNote,
+  onClose,
+  onApply
+}: {
+  currentId: string;
+  currentNote?: string;
+  onClose: () => void;
+  onApply: (id: string, note?: string) => void;
+}) {
+  const [selectedId, setSelectedId] = useState(currentId);
+  const [note, setNote] = useState(currentNote ?? "");
+
+  return (
+    <div className="media-viewer-backdrop" role="presentation" onClick={onClose}>
+      <section
+        className="media-viewer style-picker"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Choose your visual style"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="media-viewer-header">
+          <h2>Choose your world ✨</h2>
+          <button className="media-viewer-close" type="button" aria-label="Close style picker" onClick={onClose}>
+            <X size={20} />
+          </button>
+        </div>
+        <div className="style-picker-body">
+          <p className="style-picker-hint">Pick a look for your pictures and videos. You can change it any time.</p>
+          <div className="style-grid">
+            {VISUAL_STYLES.map((style) => (
+              <button
+                key={style.id}
+                type="button"
+                className={`style-card ${selectedId === style.id ? "selected" : ""}`}
+                onClick={() => setSelectedId(style.id)}
+                aria-pressed={selectedId === style.id}
+              >
+                <span className="style-card-emoji">{style.emoji}</span>
+                <span className="style-card-label">{style.label}</span>
+              </button>
+            ))}
+          </div>
+          <label className="style-freetext">
+            <span>Describe your world (optional)</span>
+            <input
+              type="text"
+              value={note}
+              onChange={(event) => setNote(event.target.value)}
+              placeholder="e.g. dancing dinosaurs at a party"
+              maxLength={80}
+            />
+            <small>Keep it kind and kid-friendly. Your words shape the pictures.</small>
+          </label>
+          <div className="button-row">
+            <button className="secondary-button" type="button" onClick={() => onApply(DEFAULT_STYLE_ID, undefined)}>
+              Surprise Me
+            </button>
+            <button className="primary-button" type="button" onClick={() => onApply(selectedId, note.trim() ? note : undefined)}>
+              Use this style
+              <ArrowRight size={18} />
+            </button>
+          </div>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+// Shown when a style change would discard already-generated Agnes media.
+// Redraw now spends credits to refresh immediately; Apply next mission keeps
+// the current media and uses the new style on the next lesson.
+function ConfirmStyleChange({
+  label,
+  hasVideo,
+  onCancel,
+  onApplyNext,
+  onRedraw
+}: {
+  label: string;
+  hasVideo: boolean;
+  onCancel: () => void;
+  onApplyNext: () => void;
+  onRedraw: () => void;
+}) {
+  return (
+    <div className="media-viewer-backdrop" role="presentation" onClick={onCancel}>
+      <section
+        className="media-viewer style-confirm"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Confirm style change"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="media-viewer-header">
+          <h2>Switch to {label}?</h2>
+        </div>
+        <div className="style-confirm-body">
+          <p>
+            We&apos;ll redraw your pictures{hasVideo ? " and video" : ""} in the new style. This uses your Agnes credits.
+          </p>
+          <div className="button-row">
+            <button className="secondary-button" type="button" onClick={onApplyNext}>
+              Apply next mission
+            </button>
+            <button className="primary-button" type="button" onClick={onRedraw}>
+              Redraw now
+              <RefreshCcw size={18} />
+            </button>
+          </div>
+          <button className="link-button" type="button" onClick={onCancel}>
+            Cancel
+          </button>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+// Brief full-stage cheer between activities. Pure CSS animation — no new deps.
+function CelebrationOverlay({ cheer }: { cheer: string }) {
+  return (
+    <div className="celebration-overlay" role="status" aria-live="polite">
+      <div className="celebration-burst" aria-hidden="true">
+        <Star size={34} fill="currentColor" />
+        <Sparkles size={28} />
+        <Star size={22} fill="currentColor" />
+      </div>
+      <p className="celebration-cheer">{cheer}</p>
     </div>
   );
 }
@@ -1271,6 +1950,8 @@ export function ParentControlScreen({
   parentControls,
   selection,
   vocabularySets,
+  bookUnits,
+  unitSummaries,
   unlocked,
   pack,
   video,
@@ -1279,12 +1960,8 @@ export function ParentControlScreen({
   onParentControls,
   onSelection,
   onUnlock,
-  onStart,
-  onRegeneratePictures,
   onDeletePictures,
   onDeleteVideo,
-  onRegenerateVideo,
-  isGenerating,
   isVideoBusy
 }: {
   settings: AgnesSettings;
@@ -1292,6 +1969,8 @@ export function ParentControlScreen({
   parentControls: ParentControlSettings;
   selection: VocabularySelection;
   vocabularySets: VocabularySet[];
+  bookUnits: VocabularyUnit[];
+  unitSummaries: Record<number, UnitLessonSummary>;
   unlocked: boolean;
   pack: LessonPack | null;
   video: VideoTaskState;
@@ -1300,12 +1979,8 @@ export function ParentControlScreen({
   onParentControls: (settings: ParentControlSettings) => void;
   onSelection: (selection: VocabularySelection) => void;
   onUnlock: () => void;
-  onStart: () => void;
-  onRegeneratePictures: () => void;
   onDeletePictures: () => void;
   onDeleteVideo: () => void;
-  onRegenerateVideo: () => void;
-  isGenerating: boolean;
   isVideoBusy: boolean;
 }) {
   const [agnesTest, setAgnesTest] = useState<TestState>({ status: "idle" });
@@ -1461,7 +2136,8 @@ export function ParentControlScreen({
               onSelection({
                 ...selection,
                 setId: event.target.value,
-                bookId: set?.books[0]?.id ?? selection.bookId
+                bookId: set?.books[0]?.id ?? selection.bookId,
+                unitNumber: 1
               });
             }}
           >
@@ -1474,7 +2150,7 @@ export function ParentControlScreen({
         </label>
         <label>
           Book
-          <select value={selection.bookId} onChange={(event) => onSelection({ ...selection, bookId: event.target.value })}>
+          <select value={selection.bookId} onChange={(event) => onSelection({ ...selection, bookId: event.target.value, unitNumber: 1 })}>
             {(vocabularySets.find((item) => item.id === selection.setId)?.books ?? []).map((book) => (
               <option key={book.id} value={book.id}>
                 {book.name} ({book.wordCount} words)
@@ -1482,6 +2158,24 @@ export function ParentControlScreen({
             ))}
           </select>
         </label>
+        <div className="parent-unit-board" aria-label="Unit lesson status">
+          {bookUnits.map((unit) => {
+            const selected = unit.unitNumber === selection.unitNumber;
+            const summary = unitSummaries[unit.unitNumber];
+            return (
+              <button
+                key={unit.unitNumber}
+                className={`parent-unit-chip ${selected ? "selected" : ""}`}
+                type="button"
+                onClick={() => onSelection({ ...selection, unitNumber: unit.unitNumber })}
+              >
+                <strong>Unit {unit.unitNumber}</strong>
+                <span>{unit.title}</span>
+                <small>{unitStatusLabel(summary)}</small>
+              </button>
+            );
+          })}
+        </div>
         <label>
           Words per mission
           <select
@@ -1526,22 +2220,10 @@ export function ParentControlScreen({
         <TestRow
           label="Test Agnes connection"
           state={agnesTest}
-          busy={isGenerating}
           disabled={!settings.apiKey.trim()}
           onTest={() => runTest(setAgnesTest, () => testAgnesConnection(settings))}
         />
         <p className="fine-print">Pronunciation uses your browser's built-in voice.</p>
-        <button
-          className={`primary-button ${isGenerating ? "busy-button" : ""}`}
-          onClick={() => {
-            if (!isGenerating) onStart();
-          }}
-          aria-disabled={isGenerating}
-          data-busy={isGenerating ? "true" : undefined}
-        >
-          {isGenerating ? "Generating..." : "Generate lesson pack"}
-          <ArrowRight size={18} />
-        </button>
       </section>
 
       <section className="setup-card media-cache-card">
@@ -1579,20 +2261,8 @@ export function ParentControlScreen({
             ))}
           </div>
         )}
-        <div className="button-row cache-actions">
-          <button
-            className={`primary-button ${isGenerating ? "busy-button" : ""}`}
-            type="button"
-            onClick={() => {
-              if (!isGenerating) onRegeneratePictures();
-            }}
-            aria-disabled={isGenerating}
-            data-busy={isGenerating ? "true" : undefined}
-          >
-            <RefreshCcw size={18} />
-            Regenerate pictures
-          </button>
-          <button className="secondary-button danger-button" type="button" onClick={onDeletePictures} disabled={!pack}>
+        <div className="button-row cache-actions parent-action-row">
+          <button className="secondary-button danger-button parent-action-button" type="button" onClick={onDeletePictures} disabled={!pack}>
             <Trash2 size={18} />
             Delete pictures
           </button>
@@ -1634,22 +2304,9 @@ export function ParentControlScreen({
             aria-label="Reward video generation progress"
           />
         )}
-        <div className="button-row cache-actions">
+        <div className="button-row cache-actions parent-action-row">
           <button
-            className={`primary-button ${isVideoBusy ? "busy-button" : ""}`}
-            type="button"
-            onClick={() => {
-              if (!isVideoBusy) onRegenerateVideo();
-            }}
-            aria-disabled={isVideoBusy}
-            data-busy={isVideoBusy ? "true" : undefined}
-            disabled={!pack || !settings.apiKey.trim()}
-          >
-            <RefreshCcw size={18} />
-            {isVideoBusy ? "Regenerating..." : "Regenerate video"}
-          </button>
-          <button
-            className="secondary-button danger-button"
+            className="secondary-button danger-button parent-action-button"
             type="button"
             onClick={onDeleteVideo}
             disabled={isVideoBusy || (!videoReady && video.status === "idle")}
@@ -1719,7 +2376,7 @@ function HomeScreen({
           aria-disabled={isGenerating}
           data-busy={isGenerating ? "true" : undefined}
         >
-          {pack ? "Start Adventure" : isGenerating ? "Generating..." : "Generate Lesson Pack"}
+          {pack ? "Start Adventure" : isGenerating ? "Starting..." : "Start Lesson"}
           <ArrowRight size={18} />
         </button>
         <button
@@ -2015,7 +2672,15 @@ function RewardScreen({
   );
 }
 
-function SummaryScreen({ mastery, onRestart }: { mastery: MissionMastery; onRestart: () => void }) {
+export function SummaryScreen({
+  mastery,
+  onContinue,
+  onPracticeAgain
+}: {
+  mastery: MissionMastery;
+  onContinue: () => void;
+  onPracticeAgain: () => void;
+}) {
   const meaning = laneProgress(mastery, "meaning");
   const say = laneProgress(mastery, "say");
   const write = laneProgress(mastery, "write");
@@ -2029,7 +2694,10 @@ function SummaryScreen({ mastery, onRestart }: { mastery: MissionMastery; onRest
         <span>Say: {say.completed}/{say.total}</span>
         <span>Write: {write.completed}/{write.total}</span>
       </div>
-      <button className="primary-button" onClick={onRestart}>Back to Mission</button>
+      <div className="button-row centered">
+        <button className="primary-button" onClick={onContinue}>Continue Learning</button>
+        <button className="secondary-button" onClick={onPracticeAgain}>Practice Again</button>
+      </div>
     </div>
   );
 }

@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { getBookWords, getVocabularySet, listBooks, listVocabularySets, selectMissionWords } from "./vocabulary";
+import {
+  getBookWords,
+  getUnitWords,
+  getVocabularySet,
+  listBookUnits,
+  listBooks,
+  listVocabularySets,
+  selectMissionWords
+} from "./vocabulary";
 
 describe("JSON vocabulary sets", () => {
   it("registers the 译林版三年级 set with books 3A and 3B", () => {
@@ -36,8 +44,29 @@ describe("JSON vocabulary sets", () => {
     expect(words[0].word).toBe("Hello!");
   });
 
+  it("lists textbook units for a book", () => {
+    const units = listBookUnits("yilin-grade3", "3A");
+
+    expect(units.slice(0, 3)).toEqual([
+      { unitNumber: 1, title: "Hello!", wordCount: 8 },
+      { unitNumber: 2, title: "I'm Liu Tao", wordCount: 7 },
+      { unitNumber: 3, title: "My friends", wordCount: 10 }
+    ]);
+  });
+
+  it("selects mission words from a specific unit", () => {
+    const unitWords = getUnitWords("yilin-grade3", "3A", 2);
+    const words = selectMissionWords("yilin-grade3", "3A", 5, 2);
+
+    expect(unitWords.map((word) => word.word)).toEqual(["are", "you", "yes", "am", "no", "not", "Goodbye."]);
+    expect(words).toEqual(unitWords.slice(0, 5));
+    expect(words[0].id).toBe("yilin-grade3-3A-u2-are");
+  });
+
   it("returns no words for an unknown set or book", () => {
     expect(getBookWords("missing-set", "3A")).toEqual([]);
     expect(getBookWords("yilin-grade3", "9Z")).toEqual([]);
+    expect(listBookUnits("missing-set", "3A")).toEqual([]);
+    expect(getUnitWords("yilin-grade3", "3A", 99)).toEqual([]);
   });
 });

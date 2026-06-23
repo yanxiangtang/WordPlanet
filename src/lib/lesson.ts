@@ -1,7 +1,7 @@
-import { imagePromptForWord, pickArtStyle, requestAgnesImage } from "./agnes";
+import { imagePromptForWord, requestAgnesImage } from "./agnes";
 import type { AgnesSettings, LessonPack, StoryScene, WordEntry } from "../types";
 
-export const TEXT_FREE_ASSET_VERSION = 5;
+export const TEXT_FREE_ASSET_VERSION = 6;
 
 const palette = ["#dbeafe", "#dcfce7", "#fef3c7", "#ffe4e6", "#ede9fe"];
 
@@ -63,7 +63,11 @@ export function collectObjectUrls(pack: LessonPack): string[] {
   ].filter((url): url is string => Boolean(url));
 }
 
-export function buildSampleLessonPack(words: WordEntry[], meta: LessonPackMeta): LessonPack {
+export function buildSampleLessonPack(
+  words: WordEntry[],
+  meta: LessonPackMeta,
+  style: { id: string; note?: string } = { id: "auto" }
+): LessonPack {
   const assets = words.map((word, index) => ({
     wordId: word.id,
     imageBlob: svgBlob(index),
@@ -115,6 +119,8 @@ export function buildSampleLessonPack(words: WordEntry[], meta: LessonPackMeta):
     createdAt: Date.now(),
     assetPromptVersion: TEXT_FREE_ASSET_VERSION,
     source: "sample",
+    artStyleId: style.id,
+    artStyleNote: style.note,
     words,
     assets,
     storyScenes
@@ -124,15 +130,16 @@ export function buildSampleLessonPack(words: WordEntry[], meta: LessonPackMeta):
 export async function buildAgnesLessonPack(
   words: WordEntry[],
   settings: AgnesSettings,
-  meta: LessonPackMeta
+  meta: LessonPackMeta,
+  style: { id: string; descriptor: string; note?: string }
 ): Promise<LessonPack> {
-  // One art style per practice group, derived from the word set so the group
-  // stays visually consistent while different groups rotate styles.
-  const style = pickArtStyle(words.map((word) => word.id).join("-"));
+  // The resolved style descriptor is provided by the caller (see
+  // src/lib/styles.ts resolveStyleDescriptor) so the kid's per-lesson style
+  // choice — including free-text — drives the look of every picture.
   const imageBlobs = await Promise.all(
-    words.map((word) => requestAgnesImage(settings, imagePromptForWord(word, style)))
+    words.map((word) => requestAgnesImage(settings, imagePromptForWord(word, style.descriptor)))
   );
-  const base = buildSampleLessonPack(words, meta);
+  const base = buildSampleLessonPack(words, meta, { id: style.id, note: style.note });
   // Revoke the sample-pack's object URLs immediately since we are about to
   // replace every imageBlob and rebuild fresh URLs below.
   for (const url of collectObjectUrls(base)) URL.revokeObjectURL(url);

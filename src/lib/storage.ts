@@ -16,7 +16,7 @@ const PARENT_CONTROLS_KEY = "word-planet:parent-controls:v1";
 const LEARNING_PAGE_KEY = "word-planet:learning-page:v1";
 const VOCAB_SELECTION_KEY = "word-planet:vocabulary-selection:v1";
 const DB_NAME = "word-planet";
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 const RESTORABLE_SCREENS = new Set<LearningScreen>(["home", "learn", "story", "game", "spell", "reward", "summary"]);
 const WORDS_PER_MISSION_OPTIONS = [5, 8, 10];
 
@@ -32,7 +32,8 @@ export const defaultProfile: ChildProfile = {
   age: 9,
   gender: "boy",
   nativeLanguage: "Chinese",
-  englishLevel: "intermediate"
+  englishLevel: "intermediate",
+  visualStyleId: "auto"
 };
 
 export const defaultParentControlSettings: ParentControlSettings = {
@@ -49,11 +50,13 @@ export const defaultLearningPageState: LearningPageState = {
 export const defaultVocabularySelection: VocabularySelection = {
   setId: "yilin-grade3",
   bookId: "3A",
+  unitNumber: 1,
   wordsPerMission: 5
 };
 
 function readJson<T>(key: string, fallback: T): T {
   try {
+    if (typeof localStorage === "undefined") return fallback;
     const raw = localStorage.getItem(key);
     return raw ? ({ ...fallback, ...JSON.parse(raw) } as T) : fallback;
   } catch {
@@ -70,6 +73,7 @@ export function loadSettings(): AgnesSettings {
 }
 
 export function saveSettings(settings: AgnesSettings): void {
+  if (typeof localStorage === "undefined") return;
   localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
 }
 
@@ -78,6 +82,7 @@ export function loadProfile(): ChildProfile {
 }
 
 export function saveProfile(profile: ChildProfile): void {
+  if (typeof localStorage === "undefined") return;
   localStorage.setItem(PROFILE_KEY, JSON.stringify(profile));
 }
 
@@ -90,6 +95,7 @@ export function loadParentControlSettings(): ParentControlSettings {
 }
 
 export function saveParentControlSettings(settings: ParentControlSettings): void {
+  if (typeof localStorage === "undefined") return;
   localStorage.setItem(PARENT_CONTROLS_KEY, JSON.stringify(settings));
 }
 
@@ -102,19 +108,23 @@ export function loadLearningPageState(): LearningPageState {
 }
 
 export function saveLearningPageState(state: LearningPageState): void {
+  if (typeof localStorage === "undefined") return;
   localStorage.setItem(LEARNING_PAGE_KEY, JSON.stringify(state));
 }
 
 export function clearSavedLearningPageState(): void {
+  if (typeof localStorage === "undefined") return;
   localStorage.removeItem(LEARNING_PAGE_KEY);
 }
 
 export function loadVocabularySelection(): VocabularySelection {
   const saved = readJson<Partial<VocabularySelection>>(VOCAB_SELECTION_KEY, defaultVocabularySelection);
   const wordsPerMission = Number(saved.wordsPerMission);
+  const unitNumber = Number(saved.unitNumber);
   return {
     setId: typeof saved.setId === "string" && saved.setId ? saved.setId : defaultVocabularySelection.setId,
     bookId: typeof saved.bookId === "string" && saved.bookId ? saved.bookId : defaultVocabularySelection.bookId,
+    unitNumber: Number.isFinite(unitNumber) && unitNumber > 0 ? Math.floor(unitNumber) : defaultVocabularySelection.unitNumber,
     wordsPerMission: WORDS_PER_MISSION_OPTIONS.includes(wordsPerMission)
       ? wordsPerMission
       : defaultVocabularySelection.wordsPerMission
@@ -122,16 +132,21 @@ export function loadVocabularySelection(): VocabularySelection {
 }
 
 export function saveVocabularySelection(selection: VocabularySelection): void {
+  if (typeof localStorage === "undefined") return;
   localStorage.setItem(VOCAB_SELECTION_KEY, JSON.stringify(selection));
 }
 
 function openDb(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
+    if (typeof indexedDB === "undefined") {
+      reject(new Error("IndexedDB is not available."));
+      return;
+    }
     const request = indexedDB.open(DB_NAME, DB_VERSION);
     request.onupgradeneeded = (event) => {
       const db = request.result;
       const tx = request.transaction;
-      for (const store of ["lessons", "mastery", "video"]) {
+      for (const store of ["lessons", "mastery", "video", "learning"]) {
         if (!db.objectStoreNames.contains(store)) db.createObjectStore(store);
       }
       // v1 -> v2: previous records held base64 data URI strings / Agnes CDN
@@ -152,7 +167,12 @@ function openDb(): Promise<IDBDatabase> {
   });
 }
 
+export function unitStorageKey(selection: Pick<VocabularySelection, "setId" | "bookId" | "unitNumber">): string {
+  return `${selection.setId}:${selection.bookId}:unit-${selection.unitNumber}`;
+}
+
 async function put<T>(storeName: string, key: string, value: T): Promise<void> {
+  if (typeof indexedDB === "undefined") return;
   const db = await openDb();
   await new Promise<void>((resolve, reject) => {
     const tx = db.transaction(storeName, "readwrite");
@@ -164,6 +184,7 @@ async function put<T>(storeName: string, key: string, value: T): Promise<void> {
 }
 
 async function get<T>(storeName: string, key: string): Promise<T | undefined> {
+  if (typeof indexedDB === "undefined") return undefined;
   const db = await openDb();
   const value = await new Promise<T | undefined>((resolve, reject) => {
     const tx = db.transaction(storeName, "readonly");
@@ -176,6 +197,7 @@ async function get<T>(storeName: string, key: string): Promise<T | undefined> {
 }
 
 async function remove(storeName: string, key: string): Promise<void> {
+  if (typeof indexedDB === "undefined") return;
   const db = await openDb();
   await new Promise<void>((resolve, reject) => {
     const tx = db.transaction(storeName, "readwrite");
@@ -204,12 +226,14 @@ function stripVideoObjectUrl(video: VideoTaskState): VideoTaskState {
 }
 
 export const storage = {
-  getLesson: () => get<LessonPack>("lessons", "active"),
-  saveLesson: (lesson: LessonPack) => put("lessons", "active", stripLessonObjectUrls(lesson)),
-  deleteLesson: () => remove("lessons", "active"),
-  getMastery: () => get<MissionMastery>("mastery", "active"),
-  saveMastery: (mastery: MissionMastery) => put("mastery", "active", mastery),
-  getVideo: () => get<VideoTaskState>("video", "active"),
-  saveVideo: (video: VideoTaskState) => put("video", "active", stripVideoObjectUrl(video)),
-  deleteVideo: () => remove("video", "active")
+  getLesson: (key = "active") => get<LessonPack>("lessons", key),
+  saveLesson: (lesson: LessonPack, key = "active") => put("lessons", key, stripLessonObjectUrls(lesson)),
+  deleteLesson: (key = "active") => remove("lessons", key),
+  getMastery: (key = "active") => get<MissionMastery>("mastery", key),
+  saveMastery: (mastery: MissionMastery, key = "active") => put("mastery", key, mastery),
+  getVideo: (key = "active") => get<VideoTaskState>("video", key),
+  saveVideo: (video: VideoTaskState, key = "active") => put("video", key, stripVideoObjectUrl(video)),
+  deleteVideo: (key = "active") => remove("video", key),
+  getLearningPageState: (key = "active") => get<LearningPageState>("learning", key),
+  saveLearningPageState: (state: LearningPageState, key = "active") => put("learning", key, state)
 };

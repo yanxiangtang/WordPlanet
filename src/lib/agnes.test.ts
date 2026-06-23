@@ -72,6 +72,14 @@ describe("Agnes API helpers", () => {
     expect(prompt).toMatch(/letters, captions, labels, signs/i);
   });
 
+  it("splices a resolved style descriptor into the Art style slot", () => {
+    const word = selectMissionWords("yilin-grade3", "3A", 5)[1];
+    const descriptor = "Flat 2D cartoon in the style of a cheerful pig family";
+    const prompt = imagePromptForWord(word, descriptor);
+
+    expect(prompt).toContain(`Art style: ${descriptor}.`);
+  });
+
   it("decodes base64 strings into Blobs with the requested MIME type", async () => {
     // "WordPlanet" as raw bytes — round-trip via base64 to confirm we get the
     // same bytes back without the ~33% inflation a data URI string would carry.

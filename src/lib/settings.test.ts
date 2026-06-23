@@ -11,7 +11,8 @@ import {
   saveLearningPageState,
   saveParentControlSettings,
   saveSettings,
-  saveVocabularySelection
+  saveVocabularySelection,
+  unitStorageKey
 } from "./storage";
 
 describe("app settings", () => {
@@ -115,11 +116,12 @@ describe("app settings", () => {
   });
 
   it("persists and reloads the vocabulary selection", () => {
-    saveVocabularySelection({ setId: "yilin-grade3", bookId: "3B", wordsPerMission: 10 });
+    saveVocabularySelection({ setId: "yilin-grade3", bookId: "3B", unitNumber: 2, wordsPerMission: 10 });
 
     expect(loadVocabularySelection()).toEqual({
       setId: "yilin-grade3",
       bookId: "3B",
+      unitNumber: 2,
       wordsPerMission: 10
     });
   });
@@ -127,7 +129,7 @@ describe("app settings", () => {
   it("clamps an invalid words-per-mission count back to the default", () => {
     localStorage.setItem(
       "word-planet:vocabulary-selection:v1",
-      JSON.stringify({ setId: "yilin-grade3", bookId: "3A", wordsPerMission: 7 })
+      JSON.stringify({ setId: "yilin-grade3", bookId: "3A", unitNumber: 1, wordsPerMission: 7 })
     );
 
     expect(loadVocabularySelection().wordsPerMission).toBe(defaultVocabularySelection.wordsPerMission);
@@ -139,7 +141,26 @@ describe("app settings", () => {
     expect(loadVocabularySelection()).toEqual({
       setId: defaultVocabularySelection.setId,
       bookId: defaultVocabularySelection.bookId,
+      unitNumber: defaultVocabularySelection.unitNumber,
       wordsPerMission: 8
     });
+  });
+
+  it("clamps a malformed saved unit number back to the default", () => {
+    localStorage.setItem(
+      "word-planet:vocabulary-selection:v1",
+      JSON.stringify({ setId: "yilin-grade3", bookId: "3A", unitNumber: -2, wordsPerMission: 5 })
+    );
+
+    expect(loadVocabularySelection()).toEqual({
+      setId: "yilin-grade3",
+      bookId: "3A",
+      unitNumber: defaultVocabularySelection.unitNumber,
+      wordsPerMission: 5
+    });
+  });
+
+  it("builds stable unit-scoped storage keys", () => {
+    expect(unitStorageKey({ setId: "yilin-grade3", bookId: "3A", unitNumber: 2 })).toBe("yilin-grade3:3A:unit-2");
   });
 });

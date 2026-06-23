@@ -3,8 +3,9 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { selectMissionWords } from "./data/vocabulary";
 import { buildSampleLessonPack } from "./lib/lesson";
+import { createEmptyMastery, recordMasteryResult } from "./lib/mastery";
 import { defaultParentControlSettings, defaultProfile, defaultSettings, defaultVocabularySelection } from "./lib/storage";
-import { ParentControlScreen } from "./App";
+import App, { ParentControlScreen, SummaryScreen } from "./App";
 import type { VideoTaskState, VocabularySet } from "./types";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -28,6 +29,249 @@ const vocabularySets: VocabularySet[] = [
     books: [{ id: "3A", name: "Book 3A", wordCount: 5 }]
   }
 ];
+const bookUnits = [
+  { unitNumber: 1, title: "Hello!", wordCount: 5 }
+];
+const unitSummaries = {
+  1: { hasPack: false, hasVideo: false, hasProgress: false, complete: false }
+};
+
+describe("mission dock navigation", () => {
+  let root: Root | undefined;
+  let container: HTMLDivElement | undefined;
+
+  afterEach(() => {
+    if (root) {
+      act(() => root?.unmount());
+    }
+    container?.remove();
+    window.history.replaceState({}, "", "/");
+    root = undefined;
+    container = undefined;
+  });
+
+  it("replaces the old global bottom navigation labels with mission steps", async () => {
+    const mount = document.createElement("div");
+    container = mount;
+    document.body.append(mount);
+    root = createRoot(mount);
+
+    await act(async () => {
+      root?.render(<App />);
+      await Promise.resolve();
+    });
+
+    const sample = Array.from(mount.querySelectorAll<HTMLButtonElement>("button")).find((button) =>
+      button.textContent?.includes("Use Sample Mission")
+    );
+    await act(async () => {
+      sample?.click();
+      await Promise.resolve();
+    });
+
+    const dock = mount.querySelector<HTMLElement>(".mission-dock");
+    expect(dock).not.toBeNull();
+    expect(dock?.getAttribute("aria-label")).toBe("Mission steps");
+
+    for (const label of ["Learn", "Story", "Game", "Spell", "Reward", "Summary"]) {
+      expect(dock?.textContent).toContain(label);
+    }
+
+    expect(mount.textContent).not.toContain("Backpack");
+    expect(mount.textContent).not.toContain("Leaderboard");
+    expect(mount.textContent).not.toContain("Missions");
+    expect(mount.textContent).not.toContain("Back to Mission");
+  });
+
+  it("keeps parent controls reachable from the top bar with a contextual return action", async () => {
+    const mount = document.createElement("div");
+    container = mount;
+    document.body.append(mount);
+    root = createRoot(mount);
+
+    await act(async () => {
+      root?.render(<App />);
+      await Promise.resolve();
+    });
+
+    const avatarButton = Array.from(mount.querySelectorAll<HTMLButtonElement>("button")).find((button) =>
+      button.textContent?.includes(defaultProfile.nickname)
+    );
+    expect(avatarButton).toBeTruthy();
+
+    await act(async () => {
+      avatarButton?.click();
+      await Promise.resolve();
+    });
+
+    expect(mount.textContent).toContain("Return to Learning");
+    expect(mount.textContent).not.toContain("Back to Mission");
+  });
+
+  it("uses a contextual summary return action", () => {
+    const mount = document.createElement("div");
+    container = mount;
+    document.body.append(mount);
+    root = createRoot(mount);
+    const words = selectMissionWords("yilin-grade3", "3A", 5);
+    const mastery = words.slice(0, 2).reduce((current, word) => {
+      let next = current;
+      next = recordMasteryResult(next, word.id, "meaning", true);
+      next = recordMasteryResult(next, word.id, "say", true);
+      next = recordMasteryResult(next, word.id, "write", true);
+      return next;
+    }, createEmptyMastery(words.slice(0, 2).map((word) => word.id)));
+
+    act(() => {
+      root?.render(
+        <SummaryScreen
+          mastery={mastery}
+          onContinue={() => {}}
+          onPracticeAgain={() => {}}
+        />
+      );
+    });
+
+    expect(mount.textContent).toContain("Continue Learning");
+    expect(mount.textContent).toContain("Practice Again");
+    expect(mount.textContent).not.toContain("Back to Mission");
+  });
+
+  it("restores and updates the current page from the URL", async () => {
+    window.history.replaceState({}, "", "/?page=spell");
+    const mount = document.createElement("div");
+    container = mount;
+    document.body.append(mount);
+    root = createRoot(mount);
+
+    await act(async () => {
+      root?.render(<App />);
+      await Promise.resolve();
+    });
+
+    const activeDockItem = mount.querySelector<HTMLElement>(".mission-dock-item.active");
+    expect(activeDockItem?.textContent).toContain("Spell");
+    expect(window.location.search).toContain("page=spell");
+
+    const avatarButton = Array.from(mount.querySelectorAll<HTMLButtonElement>("button")).find((button) =>
+      button.textContent?.includes(defaultProfile.nickname)
+    );
+
+    await act(async () => {
+      avatarButton?.click();
+      await Promise.resolve();
+    });
+
+    expect(window.location.search).toContain("page=setup");
+  });
+});
+
+describe("kid lesson board", () => {
+  let root: Root | undefined;
+  let container: HTMLDivElement | undefined;
+
+  afterEach(() => {
+    if (root) {
+      act(() => root?.unmount());
+    }
+    container?.remove();
+    window.history.replaceState({}, "", "/");
+    localStorage?.clear();
+    root = undefined;
+    container = undefined;
+  });
+
+  it("shows unit lesson cards on the child home screen", async () => {
+    const mount = document.createElement("div");
+    container = mount;
+    document.body.append(mount);
+    root = createRoot(mount);
+
+    await act(async () => {
+      root?.render(<App />);
+      await Promise.resolve();
+    });
+
+    expect(mount.textContent).toContain("Choose a lesson");
+    expect(mount.textContent).toContain("Unit 1");
+    expect(mount.textContent).toContain("Hello!");
+    expect(mount.textContent).toContain("Unit 2");
+    expect(mount.textContent).toContain("I'm Liu Tao");
+    expect(mount.querySelector(".mission-dock")).toBeNull();
+  });
+
+  it("opens lesson detail before starting a unit lesson", async () => {
+    const mount = document.createElement("div");
+    container = mount;
+    document.body.append(mount);
+    root = createRoot(mount);
+
+    await act(async () => {
+      root?.render(<App />);
+      await Promise.resolve();
+    });
+
+    const unitTwo = Array.from(mount.querySelectorAll<HTMLButtonElement>("button")).find((button) =>
+      button.textContent?.includes("Unit 2")
+    );
+
+    await act(async () => {
+      unitTwo?.click();
+      await Promise.resolve();
+    });
+
+    expect(mount.textContent).toContain("Lesson detail");
+    expect(mount.textContent).toContain("are");
+    expect(mount.textContent).toContain("you");
+    expect(mount.textContent).toContain("Start Lesson");
+    expect(mount.querySelector(".mission-dock")).toBeNull();
+
+    const start = Array.from(mount.querySelectorAll<HTMLButtonElement>("button")).find((button) =>
+      button.textContent?.includes("Start Lesson")
+    );
+
+    await act(async () => {
+      start?.click();
+      await Promise.resolve();
+    });
+
+    expect(mount.textContent).toContain("are");
+    expect(mount.textContent).not.toContain("Hello!");
+  });
+
+  it("starts the selected unit when using the sample mission from lesson detail", async () => {
+    const mount = document.createElement("div");
+    container = mount;
+    document.body.append(mount);
+    root = createRoot(mount);
+
+    await act(async () => {
+      root?.render(<App />);
+      await Promise.resolve();
+    });
+
+    const unitTwo = Array.from(mount.querySelectorAll<HTMLButtonElement>("button")).find((button) =>
+      button.textContent?.includes("Unit 2")
+    );
+
+    await act(async () => {
+      unitTwo?.click();
+      await Promise.resolve();
+    });
+
+    const sample = Array.from(mount.querySelectorAll<HTMLButtonElement>("button")).find((button) =>
+      button.textContent?.includes("Use Sample Mission")
+    );
+
+    await act(async () => {
+      sample?.click();
+      await Promise.resolve();
+    });
+
+    expect(mount.querySelector(".lesson-board")).toBeNull();
+    expect(mount.querySelector<HTMLElement>(".word-focus-card")?.textContent).toContain("are");
+  });
+});
 
 describe("parent cached media controls", () => {
   let root: Root | undefined;
@@ -63,6 +307,8 @@ describe("parent cached media controls", () => {
           parentControls={defaultParentControlSettings}
           selection={defaultVocabularySelection}
           vocabularySets={vocabularySets}
+          bookUnits={bookUnits}
+          unitSummaries={unitSummaries}
           unlocked={true}
           pack={pack}
           video={video}
@@ -71,12 +317,8 @@ describe("parent cached media controls", () => {
           onParentControls={() => {}}
           onSelection={() => {}}
           onUnlock={() => {}}
-          onStart={() => {}}
-          onRegeneratePictures={() => {}}
           onDeletePictures={() => {}}
           onDeleteVideo={() => {}}
-          onRegenerateVideo={() => {}}
-          isGenerating={false}
           isVideoBusy={false}
         />
       );
@@ -108,11 +350,11 @@ describe("parent cached media controls", () => {
     expect(videoDialog?.querySelector("video")?.getAttribute("src")).toBe(video.url);
   });
 
-  it("uses animated busy states instead of disabling generation actions", () => {
+  it("keeps parent cache cards delete-only", () => {
     const words = selectMissionWords("yilin-grade3", "3A", 5);
     const pack = buildSampleLessonPack(words, { setId: "yilin-grade3", title: "Book 3A" });
-    const onStart = vi.fn();
-    const onRegeneratePictures = vi.fn();
+    const onDeletePictures = vi.fn();
+    const onDeleteVideo = vi.fn();
     const mount = document.createElement("div");
     container = mount;
     document.body.append(mount);
@@ -126,6 +368,8 @@ describe("parent cached media controls", () => {
           parentControls={defaultParentControlSettings}
           selection={defaultVocabularySelection}
           vocabularySets={vocabularySets}
+          bookUnits={bookUnits}
+          unitSummaries={unitSummaries}
           unlocked={true}
           pack={pack}
           video={{ status: "idle", progress: 0 }}
@@ -134,45 +378,27 @@ describe("parent cached media controls", () => {
           onParentControls={() => {}}
           onSelection={() => {}}
           onUnlock={() => {}}
-          onStart={onStart}
-          onRegeneratePictures={onRegeneratePictures}
-          onDeletePictures={() => {}}
-          onDeleteVideo={() => {}}
-          onRegenerateVideo={() => {}}
-          isGenerating={true}
+          onDeletePictures={onDeletePictures}
+          onDeleteVideo={onDeleteVideo}
           isVideoBusy={false}
         />
       );
     });
 
-    const generate = Array.from(mount.querySelectorAll<HTMLButtonElement>("button")).find((button) =>
-      button.textContent?.includes("Generating...")
-    );
-    const testAgnes = Array.from(mount.querySelectorAll<HTMLButtonElement>("button")).find((button) =>
-      button.textContent?.includes("Test Agnes connection")
-    );
-    const regenerate = Array.from(mount.querySelectorAll<HTMLButtonElement>("button")).find((button) =>
-      button.textContent?.includes("Regenerate pictures")
-    );
+    const buttonText = Array.from(mount.querySelectorAll<HTMLButtonElement>("button")).map((button) => button.textContent?.trim());
+    expect(buttonText.some((text) => text?.includes("Generate lesson pack"))).toBe(false);
+    expect(buttonText.some((text) => text?.includes("Regenerate pictures"))).toBe(false);
+    expect(buttonText.some((text) => text?.includes("Regenerate video"))).toBe(false);
 
-    for (const button of [generate, testAgnes, regenerate]) {
-      expect(button?.disabled).toBe(false);
-      expect(button?.getAttribute("aria-disabled")).toBe("true");
-      expect(button?.getAttribute("data-busy")).toBe("true");
-    }
-
-    act(() => generate?.click());
-    act(() => testAgnes?.click());
-    act(() => regenerate?.click());
-
-    expect(onStart).not.toHaveBeenCalled();
-    expect(onRegeneratePictures).not.toHaveBeenCalled();
+    const deletePictures = buttonText.find((text) => text === "Delete pictures");
+    const deleteVideo = buttonText.find((text) => text === "Delete video");
+    expect(deletePictures).toBeTruthy();
+    expect(deleteVideo).toBeTruthy();
   });
 
-  it("invokes onRegenerateVideo from the cached-video card and shows a progress bar while busy", () => {
+  it("shows video progress in the cached-video card without regeneration controls", () => {
     const words = selectMissionWords("yilin-grade3", "3A", 5);
     const pack = buildSampleLessonPack(words, { setId: "yilin-grade3", title: "Book 3A" });
-    const onRegenerateVideo = vi.fn();
     const mount = document.createElement("div");
     container = mount;
     document.body.append(mount);
@@ -186,6 +412,8 @@ describe("parent cached media controls", () => {
           parentControls={defaultParentControlSettings}
           selection={defaultVocabularySelection}
           vocabularySets={vocabularySets}
+          bookUnits={bookUnits}
+          unitSummaries={unitSummaries}
           unlocked={true}
           pack={pack}
           video={{ status: "idle", progress: 0 }}
@@ -194,30 +422,18 @@ describe("parent cached media controls", () => {
           onParentControls={() => {}}
           onSelection={() => {}}
           onUnlock={() => {}}
-          onStart={() => {}}
-          onRegeneratePictures={() => {}}
           onDeletePictures={() => {}}
           onDeleteVideo={() => {}}
-          onRegenerateVideo={onRegenerateVideo}
-          isGenerating={false}
           isVideoBusy={false}
         />
       );
     });
 
-    const regenerateVideo = Array.from(mount.querySelectorAll<HTMLButtonElement>("button")).find((button) =>
-      button.textContent?.includes("Regenerate video")
-    );
-    expect(regenerateVideo).toBeTruthy();
-    expect(regenerateVideo?.disabled).toBe(false);
+    expect(mount.textContent).not.toContain("Regenerate video");
     expect(mount.querySelector(".video-progress")).toBeNull();
 
-    act(() => regenerateVideo?.click());
-    expect(onRegenerateVideo).toHaveBeenCalledTimes(1);
-
     // Re-render in the busy state and verify the progress bar appears and the
-    // button announces busy without becoming `disabled` (which would block the
-    // existing busy-button animation).
+    // parent card remains delete-only while lesson start owns generation.
     act(() => {
       root?.render(
         <ParentControlScreen
@@ -226,6 +442,8 @@ describe("parent cached media controls", () => {
           parentControls={defaultParentControlSettings}
           selection={defaultVocabularySelection}
           vocabularySets={vocabularySets}
+          bookUnits={bookUnits}
+          unitSummaries={unitSummaries}
           unlocked={true}
           pack={pack}
           video={{ status: "running", progress: 42 }}
@@ -234,34 +452,64 @@ describe("parent cached media controls", () => {
           onParentControls={() => {}}
           onSelection={() => {}}
           onUnlock={() => {}}
-          onStart={() => {}}
-          onRegeneratePictures={() => {}}
           onDeletePictures={() => {}}
           onDeleteVideo={() => {}}
-          onRegenerateVideo={onRegenerateVideo}
-          isGenerating={false}
           isVideoBusy={true}
         />
       );
     });
 
-    const busyButton = Array.from(mount.querySelectorAll<HTMLButtonElement>("button")).find((button) =>
-      button.textContent?.includes("Regenerating...")
-    );
-    expect(busyButton?.getAttribute("data-busy")).toBe("true");
-    expect(busyButton?.disabled).toBe(false);
+    expect(mount.textContent).not.toContain("Regenerating...");
 
     const progress = mount.querySelector<HTMLProgressElement>(".video-progress");
     expect(progress).not.toBeNull();
     expect(progress?.value).toBe(42);
 
-    // Clicking while busy must not re-fire the prop.
-    act(() => busyButton?.click());
-    expect(onRegenerateVideo).toHaveBeenCalledTimes(1);
-
     const deleteVideo = Array.from(mount.querySelectorAll<HTMLButtonElement>("button")).find((button) =>
       button.textContent?.includes("Delete video")
     );
     expect(deleteVideo?.disabled).toBe(true);
+  });
+
+  it("groups parent media actions in stable full-width rows", () => {
+    const words = selectMissionWords("yilin-grade3", "3A", 5);
+    const pack = buildSampleLessonPack(words, { setId: "yilin-grade3", title: "Book 3A" });
+    const mount = document.createElement("div");
+    container = mount;
+    document.body.append(mount);
+    root = createRoot(mount);
+
+    act(() => {
+      root?.render(
+        <ParentControlScreen
+          settings={{ ...defaultSettings, apiKey: "agnes-key" }}
+          profile={defaultProfile}
+          parentControls={defaultParentControlSettings}
+          selection={defaultVocabularySelection}
+          vocabularySets={vocabularySets}
+          bookUnits={bookUnits}
+          unitSummaries={unitSummaries}
+          unlocked={true}
+          pack={pack}
+          video={{ status: "idle", progress: 0 }}
+          onSettings={() => {}}
+          onProfile={() => {}}
+          onParentControls={() => {}}
+          onSelection={() => {}}
+          onUnlock={() => {}}
+          onDeletePictures={() => {}}
+          onDeleteVideo={() => {}}
+          isVideoBusy={false}
+        />
+      );
+    });
+
+    const actionRows = Array.from(mount.querySelectorAll<HTMLElement>(".parent-action-row"));
+    expect(actionRows).toHaveLength(2);
+    for (const row of actionRows) {
+      const buttons = Array.from(row.querySelectorAll<HTMLButtonElement>("button"));
+      expect(buttons).toHaveLength(1);
+      expect(buttons.every((button) => button.classList.contains("parent-action-button"))).toBe(true);
+    }
   });
 });

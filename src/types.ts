@@ -21,6 +21,12 @@ export type VocabularyBook = {
   wordCount: number;
 };
 
+export type VocabularyUnit = {
+  unitNumber: number;
+  title: string;
+  wordCount: number;
+};
+
 export type VocabularySet = {
   id: string;
   name: string;
@@ -31,6 +37,7 @@ export type VocabularySet = {
 export type VocabularySelection = {
   setId: string;
   bookId: string;
+  unitNumber: number;
   wordsPerMission: number;
 };
 
@@ -60,6 +67,12 @@ export type ChildProfile = {
   gender: "girl" | "boy";
   nativeLanguage: "Chinese";
   englishLevel: "intermediate";
+  // Kid-selected visual style id (see src/lib/styles.ts). "auto" rotates a
+  // style per practice group; a curated id fixes the look for that mission.
+  visualStyleId: string;
+  // Optional free-text "describe your world" note. When non-empty (after
+  // sanitization) it overrides the curated style's descriptor.
+  visualStyleNote?: string;
 };
 
 export type LessonAsset = {
@@ -89,6 +102,11 @@ export type LessonPack = {
   createdAt: number;
   assetPromptVersion: number;
   source: "agnes" | "sample";
+  // Style id (and optional free-text note) the pack's art was generated with.
+  // Compared against the kid's current selection so a style change can detect a
+  // stale pack and prompt for regeneration.
+  artStyleId: string;
+  artStyleNote?: string;
   words: WordEntry[];
   assets: LessonAsset[];
   storyScenes: StoryScene[];

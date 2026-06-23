@@ -1,4 +1,4 @@
-import type { VocabularyBook, VocabularySet, WordEntry, WordLevel } from "../types";
+import type { VocabularyBook, VocabularySet, VocabularyUnit, WordEntry, WordLevel } from "../types";
 
 type RawWord = {
   word: string;
@@ -94,30 +94,61 @@ export function listBooks(setId: string): VocabularyBook[] {
   return getVocabularySet(setId)?.books ?? [];
 }
 
+export function listBookUnits(setId: string, bookId: string): VocabularyUnit[] {
+  const set = findSet(setId);
+  if (!set) return [];
+  const book = findBook(set, bookId);
+  if (!book) return [];
+
+  return book.units.map((unit) => ({
+    unitNumber: unit.unit,
+    title: unit.title,
+    wordCount: unit.words.length
+  }));
+}
+
+function deriveUnitWords(setId: string, bookId: string, units: RawUnit[]): WordEntry[] {
+  const usedIds = new Set<string>();
+
+  return units.flatMap((unit) =>
+    unit.words.map((raw) => {
+      // Guard against slug collisions (e.g. "Hi." vs "Hi") so each word keeps a
+      // unique id for asset keying and mastery tracking. Include the unit number
+      // so a repeated textbook word in another unit does not share progress/media.
+      let suffix = `u${unit.unit}-${slugify(raw.word) || "word"}`;
+      let candidate = suffix;
+      let index = 2;
+      while (usedIds.has(candidate)) {
+        candidate = `${suffix}-${index}`;
+        index += 1;
+      }
+      usedIds.add(candidate);
+      return deriveWordEntry(setId, bookId, raw, candidate);
+    })
+  );
+}
+
 export function getBookWords(setId: string, bookId: string): WordEntry[] {
   const set = findSet(setId);
   if (!set) return [];
   const book = findBook(set, bookId);
   if (!book) return [];
 
-  const rawWords = book.units.flatMap((unit) => unit.words);
-  const usedIds = new Set<string>();
-
-  return rawWords.map((raw) => {
-    // Guard against slug collisions (e.g. "Hi." vs "Hi") so each word keeps a
-    // unique id for asset keying and mastery tracking.
-    let suffix = slugify(raw.word) || "word";
-    let candidate = suffix;
-    let index = 2;
-    while (usedIds.has(candidate)) {
-      candidate = `${suffix}-${index}`;
-      index += 1;
-    }
-    usedIds.add(candidate);
-    return deriveWordEntry(setId, bookId, raw, candidate);
-  });
+  return deriveUnitWords(setId, bookId, book.units);
 }
 
-export function selectMissionWords(setId: string, bookId: string, count: number): WordEntry[] {
-  return getBookWords(setId, bookId).slice(0, count);
+export function getUnitWords(setId: string, bookId: string, unitNumber: number): WordEntry[] {
+  const set = findSet(setId);
+  if (!set) return [];
+  const book = findBook(set, bookId);
+  if (!book) return [];
+  const unit = book.units.find((item) => item.unit === unitNumber);
+  if (!unit) return [];
+
+  return deriveUnitWords(setId, bookId, [unit]);
+}
+
+export function selectMissionWords(setId: string, bookId: string, count: number, unitNumber?: number): WordEntry[] {
+  const source = typeof unitNumber === "number" ? getUnitWords(setId, bookId, unitNumber) : getBookWords(setId, bookId);
+  return source.slice(0, count);
 }

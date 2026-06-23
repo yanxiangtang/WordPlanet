@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { getBookWords, selectMissionWords } from "../data/vocabulary";
-import { buildSampleLessonPack } from "./lesson";
+import { buildSampleLessonPack, TEXT_FREE_ASSET_VERSION } from "./lesson";
 
 const META = { setId: "yilin-grade3", title: "译林版三年级上册" };
 
@@ -37,5 +37,21 @@ describe("lesson pack generation", () => {
     expect(decoded).not.toContain(firstWord.word);
     expect(decoded).not.toContain(firstWord.meaningZh);
     expect(decoded).not.toContain("<text");
+  });
+
+  it("stamps the default style id on a sample pack and carries the asset prompt version", () => {
+    const words = selectMissionWords("yilin-grade3", "3A", 5);
+    const pack = buildSampleLessonPack(words, META);
+
+    expect(pack.artStyleId).toBe("auto");
+    expect(pack.assetPromptVersion).toBe(TEXT_FREE_ASSET_VERSION);
+  });
+
+  it("records the style id and free-text note passed to the sample builder", () => {
+    const words = selectMissionWords("yilin-grade3", "3A", 5);
+    const pack = buildSampleLessonPack(words, META, { id: "cartoon-pigs", note: "dancing pigs" });
+
+    expect(pack.artStyleId).toBe("cartoon-pigs");
+    expect(pack.artStyleNote).toBe("dancing pigs");
   });
 });
