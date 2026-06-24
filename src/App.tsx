@@ -7,8 +7,8 @@ import {
   ClipboardList,
   Gamepad2,
   Gem,
-  Info,
   KeyRound,
+  LayoutGrid,
   Loader2,
   LockKeyhole,
   Mic,
@@ -19,20 +19,26 @@ import {
   Star,
   Trash2,
   Trophy,
-  Users,
   Volume2,
   X,
   type LucideIcon
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
-import { getVocabularySet, listBookUnits, listVocabularySets, selectMissionWords } from "./data/vocabulary";
+import { getUnitWords, getVocabularySet, listBookUnits, listVocabularySets, selectMissionWords } from "./data/vocabulary";
 import {
   blobToDataUri,
+  buildStoryScenePrompt,
+  buildUnitCoverPrompt,
   createAgnesVideoTask,
   fetchAgnesVideoBlob,
   pollAgnesVideo,
+  requestAgnesImage,
+  requestAgnesStory,
+  STORY_TEXT_PROMPT_VERSION,
   testAgnesConnection,
-  videoRewardPrompt
+  UNIT_COVER_PROMPT_VERSION,
+  videoRewardPrompt,
+  videoRewardPromptFromStory
 } from "./lib/agnes";
 import {
   buildAgnesLessonPack,
@@ -40,8 +46,10 @@ import {
   collectObjectUrls,
   getWordImage,
   TEXT_FREE_ASSET_VERSION,
+  upsertStoryScene,
   withObjectUrls
 } from "./lib/lesson";
+import { getMediaScheduler } from "./lib/mediaScheduler";
 import { createEmptyMastery, isMissionComplete, laneProgress, recordMasteryResult } from "./lib/mastery";
 import { listenForWord, speak, speechRecognitionSupported } from "./lib/speech";
 import { buildShuffledLetterTiles } from "./lib/spelling";
@@ -59,7 +67,9 @@ import {
   saveProfile,
   saveSettings,
   saveVocabularySelection,
+  isUnitCoverFresh,
   storage,
+  unitCoverStorageKey,
   unitStorageKey
 } from "./lib/storage";
 import type {
@@ -69,6 +79,9 @@ import type {
   LessonPack,
   MissionMastery,
   ParentControlSettings,
+  StoryText,
+  UnitCoverAsset,
+  UnitStylePick,
   VideoTaskState,
   VocabularySelection,
   VocabularySet,
@@ -97,6 +110,10 @@ function writeScreenToUrl(screen: Screen): void {
   const url = new URL(window.location.href);
   url.searchParams.set("page", screen);
   window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}${url.hash}`);
+}
+
+function isOngoingNoticeText(text: string): boolean {
+  return /^(Loading|Asking|Downloading|Redrawing)/.test(text);
 }
 
 // Wait a fixed number of milliseconds; used to pace the parent-side video
@@ -157,6 +174,13 @@ function App() {
   const [mastery, setMastery] = useState<MissionMastery>(() => createEmptyMastery(missionWords.map((word) => word.id)));
   const [video, setVideo] = useState<VideoTaskState>({ status: "idle", progress: 0 });
   const [unitSummaries, setUnitSummaries] = useState<Record<number, UnitLessonSummary>>({});
+  const [unitCovers, setUnitCovers] = useState<Record<number, UnitCoverAsset>>({});
+  // Per-unit style picks for the current book (keyed by unitStorageKey).
+  // Hydrated alongside unit covers; the picker requires a pick before
+  // generating lesson images for a unit. Falling back to the profile
+  // default when a unit has no pick lets returning users keep the look
+  // they had before the per-unit refactor.
+  const [unitStylePicks, setUnitStylePicks] = useState<Record<string, UnitStylePick>>({});
   const [detailUnitNumber, setDetailUnitNumber] = useState<number>(selection.unitNumber);
   const [activeIndex, setActiveIndex] = useState(0);
   const [isGenerating, setGenerating] = useState(false);
@@ -175,6 +199,7 @@ function App() {
   // blob must route through replacePackUrls / replaceVideoUrl — otherwise the
   // old URLs leak until page unload (each one is GC-rooted by the browser).
   const objectUrlsRef = useRef<string[]>([]);
+  const unitCoverUrlsRef = useRef<string[]>([]);
   const videoUrlRef = useRef<string | null>(null);
   const videoPollRef = useRef<{ cancelled: boolean } | null>(null);
 
@@ -186,6 +211,31 @@ function App() {
   function replaceVideoUrl(nextUrl: string | null) {
     if (videoUrlRef.current) URL.revokeObjectURL(videoUrlRef.current);
     videoUrlRef.current = nextUrl;
+  }
+
+  function replaceUnitCoverMap(nextCovers: Record<number, UnitCoverAsset>) {
+    revokeUnitCoverUrls();
+    unitCoverUrlsRef.current = Object.values(nextCovers)
+      .map((cover) => cover.imageUrl)
+      .filter((url): url is string => Boolean(url));
+    setUnitCovers(nextCovers);
+  }
+
+  function revokeUnitCoverUrls() {
+    for (const url of unitCoverUrlsRef.current) URL.revokeObjectURL(url);
+    unitCoverUrlsRef.current = [];
+  }
+
+  function upsertUnitCover(nextCover: UnitCoverAsset) {
+    setUnitCovers((current) => {
+      const previousUrl = current[nextCover.unitNumber]?.imageUrl;
+      if (previousUrl && previousUrl !== nextCover.imageUrl) {
+        URL.revokeObjectURL(previousUrl);
+        unitCoverUrlsRef.current = unitCoverUrlsRef.current.filter((url) => url !== previousUrl);
+      }
+      if (nextCover.imageUrl) unitCoverUrlsRef.current.push(nextCover.imageUrl);
+      return { ...current, [nextCover.unitNumber]: nextCover };
+    });
   }
 
   function cancelVideoPoll() {
@@ -204,6 +254,13 @@ function App() {
     const emptyMastery = createEmptyMastery(words.map((word) => word.id));
 
     cancelVideoPoll();
+    // Cancel any in-flight unit-scoped scheduler jobs (lesson images,
+    // story text/images, reward video) for the previous unit so they
+    // don't race the freshly hydrated state.
+    const previousKey = activeUnitKey;
+    if (previousKey && previousKey !== key) {
+      scheduler.cancelAll(({ id }) => id.includes(`:${previousKey}:`) || id.endsWith(`:${previousKey}`));
+    }
     replacePackUrls(null);
     replaceVideoUrl(null);
     setPack(null);
@@ -306,20 +363,166 @@ function App() {
   );
 
   // Resolve the kid's chosen visual style into the descriptor Agnes receives.
-  // "auto" rotates a style per practice group via pickArtStyle; a curated id
-  // fixes the look; a non-empty free-text note overrides the curated descriptor
-  // (sanitized inside resolveStyleDescriptor).
+  // A per-unit pick (saved in IDB via storage.saveUnitStyle) wins over the
+  // profile-level default. "auto" rotates a style per practice group via
+  // pickArtStyle; a curated id fixes the look; a non-empty free-text note
+  // overrides the curated descriptor (sanitized inside resolveStyleDescriptor).
   const missionSeed = useMemo(() => missionWords.map((word) => word.id).join("-"), [missionWords]);
+  const currentUnitPick = unitStylePicks[activeUnitKey];
   const visualStyle = useMemo<{ id: string; descriptor: string; note?: string }>(
-    () => ({
-      id: profile.visualStyleId ?? DEFAULT_STYLE_ID,
-      descriptor: resolveStyleDescriptor(profile.visualStyleId, profile.visualStyleNote, missionSeed),
-      note: profile.visualStyleNote
-    }),
-    [profile.visualStyleId, profile.visualStyleNote, missionSeed]
+    () => {
+      const id = currentUnitPick?.styleId ?? profile.visualStyleId ?? DEFAULT_STYLE_ID;
+      const note = currentUnitPick?.styleNote ?? profile.visualStyleNote;
+      return {
+        id,
+        descriptor: resolveStyleDescriptor(id, note, missionSeed),
+        note
+      };
+    },
+    [currentUnitPick?.styleId, currentUnitPick?.styleNote, profile.visualStyleId, profile.visualStyleNote, missionSeed]
   );
-  const currentStyleLabel = getStyle(profile.visualStyleId ?? DEFAULT_STYLE_ID)?.label ?? "Surprise Me";
-  const currentStyleEmoji = getStyle(profile.visualStyleId ?? DEFAULT_STYLE_ID)?.emoji ?? "🎲";
+  const unitStyleLabel = getStyle(currentUnitPick?.styleId ?? profile.visualStyleId ?? DEFAULT_STYLE_ID)?.label ?? "Surprise Me";
+  const unitStyleEmoji = getStyle(currentUnitPick?.styleId ?? profile.visualStyleId ?? DEFAULT_STYLE_ID)?.emoji ?? "🎲";
+  const hasUnitStylePick = Boolean(currentUnitPick);
+
+  // The media scheduler is a module-singleton; the App holds the reference
+  // for ergonomic cancellation when units switch.
+  const scheduler = useMemo(() => getMediaScheduler(), []);
+
+  // Resolve a style for a unit that may differ from the active unit (used
+  // by the picker board to render each card's intended look).
+  function resolveStyleForUnit(unitKey: string): { id: string; descriptor: string; note?: string } {
+    const pick = unitStylePicks[unitKey];
+    const id = pick?.styleId ?? profile.visualStyleId ?? DEFAULT_STYLE_ID;
+    const note = pick?.styleNote ?? profile.visualStyleNote;
+    return { id, descriptor: resolveStyleDescriptor(id, note, unitKey), note };
+  }
+
+  // Lazy unit-cover generation.
+  //
+  // The previous implementation eagerly walked every unit in the book and
+  // generated covers serially on every render — that burned credits on
+  // units the kid never opened and stalled book switches. The new flow:
+  //
+  //   1. On book switch, read all cached covers from IDB into local state
+  //      so the picker grid renders instantly for previously-visited units.
+  //   2. The LessonBoard hands each card an `onVisible(unitNumber)` handler
+  //      wired to an IntersectionObserver. The first time a card scrolls
+  //      into view, this enqueues a low-priority cover job through the
+  //      media scheduler. Dedupe via the job id keeps a double-mount or
+  //      rapid scroll from re-firing.
+  //   3. Style changes are scoped to the unit whose pick changed — we no
+  //      longer regenerate every cover in the book when one style flips.
+  useEffect(() => {
+    if (!hydrated) return;
+    let cancelled = false;
+
+    async function hydrateCachedCovers() {
+      replaceUnitCoverMap({});
+      const cachedCovers: Record<number, UnitCoverAsset> = {};
+      for (const unit of bookUnits) {
+        const key = unitCoverStorageKey({ ...selection, unitNumber: unit.unitNumber });
+        try {
+          const storedCover = await storage.getUnitCover(key);
+          if (storedCover) {
+            cachedCovers[unit.unitNumber] = {
+              ...storedCover,
+              imageUrl: URL.createObjectURL(storedCover.imageBlob)
+            };
+          }
+        } catch {
+          // Cached covers are decorative; failing to read one just means
+          // we'll regenerate when the card scrolls into view.
+        }
+      }
+      if (cancelled) {
+        for (const cover of Object.values(cachedCovers)) URL.revokeObjectURL(cover.imageUrl);
+        return;
+      }
+      replaceUnitCoverMap(cachedCovers);
+    }
+
+    void hydrateCachedCovers();
+    return () => {
+      cancelled = true;
+    };
+  }, [bookUnits, hydrated, selection.bookId, selection.setId]);
+
+  // Load per-unit style picks for the current book whenever it changes.
+  // Picks are persistent (storage.saveUnitStyle) so the picker can show
+  // "Style for this unit" before any lesson is generated.
+  useEffect(() => {
+    if (!hydrated) return;
+    let cancelled = false;
+    async function loadUnitStyles() {
+      const next: Record<string, UnitStylePick> = {};
+      await Promise.all(
+        bookUnits.map(async (unit) => {
+          const key = unitStorageKey({ ...selection, unitNumber: unit.unitNumber });
+          try {
+            const pick = await storage.getUnitStyle(key);
+            if (pick) next[key] = pick;
+          } catch {
+            // Missing picks are fine — the resolver falls back to profile.
+          }
+        })
+      );
+      if (!cancelled) setUnitStylePicks(next);
+    }
+    void loadUnitStyles();
+    return () => {
+      cancelled = true;
+    };
+  }, [bookUnits, hydrated, selection.bookId, selection.setId]);
+
+  // Triggered by LessonBoard when a unit card scrolls into view. Generates
+  // the cover only when a fresh one isn't already cached for the unit's
+  // current style. Routed through the scheduler at low priority so a
+  // simultaneous lesson-image burst preempts it.
+  async function requestUnitCover(unit: VocabularyUnit) {
+    if (!hasApiKey) return;
+    const unitKey = unitStorageKey({ ...selection, unitNumber: unit.unitNumber });
+    const coverKey = unitCoverStorageKey({ ...selection, unitNumber: unit.unitNumber });
+    const style = resolveStyleForUnit(unitKey);
+    const criteria = { promptVersion: UNIT_COVER_PROMPT_VERSION, artStyleId: style.id, artStyleNote: style.note };
+    if (isUnitCoverFresh(unitCovers[unit.unitNumber], criteria)) return;
+    try {
+      const cached = await storage.getUnitCover(coverKey);
+      if (isUnitCoverFresh(cached, criteria)) {
+        upsertUnitCover({ ...cached, imageUrl: URL.createObjectURL(cached.imageBlob) });
+        return;
+      }
+    } catch {
+      // Fall through and generate.
+    }
+    try {
+      const words = getUnitWords(selection.setId, selection.bookId, unit.unitNumber);
+      const imageBlob = await scheduler.enqueue({
+        id: `unitCover:${coverKey}`,
+        kind: "unitCover",
+        priority: -1,
+        run: (signal) =>
+          requestAgnesImage(settings, buildUnitCoverPrompt(unit, words, style.descriptor), { signal })
+      });
+      const nextCover: UnitCoverAsset = {
+        setId: selection.setId,
+        bookId: selection.bookId,
+        unitNumber: unit.unitNumber,
+        promptVersion: UNIT_COVER_PROMPT_VERSION,
+        artStyleId: style.id,
+        artStyleNote: style.note,
+        imageBlob,
+        imageUrl: URL.createObjectURL(imageBlob),
+        source: "agnes",
+        createdAt: Date.now()
+      };
+      await storage.saveUnitCover(nextCover, coverKey);
+      upsertUnitCover(nextCover);
+    } catch {
+      // Unit covers are decorative; failed background generation should not
+      // interrupt choosing or starting a lesson.
+    }
+  }
 
   // A style pick that would throw away already-generated Agnes media must be
   // confirmed before regenerating (regen costs API credits). When set, the
@@ -363,6 +566,7 @@ function App() {
   useEffect(
     () => () => {
       replacePackUrls(null);
+      revokeUnitCoverUrls();
       replaceVideoUrl(null);
       cancelVideoPoll();
       if (celebrationTimerRef.current) clearTimeout(celebrationTimerRef.current);
@@ -428,7 +632,14 @@ function App() {
     try {
       const nextPack =
         hasApiKey && !forceSample
-          ? await buildAgnesLessonPack(missionWords, settings, lessonMeta, visualStyle)
+          ? await buildAgnesLessonPack(missionWords, settings, lessonMeta, visualStyle, {
+              imageBlobFetcher: (prompt, _index, word) =>
+                scheduler.enqueue({
+                  id: `lessonImage:${activeUnitKey}:${word.id}`,
+                  kind: "lessonImage",
+                  run: (signal) => requestAgnesImage(settings, prompt, { signal })
+                })
+            })
           : buildSampleLessonPack(missionWords, lessonMeta, { id: visualStyle.id, note: visualStyle.note });
       const nextMastery = createEmptyMastery(nextPack.words.map((word) => word.id));
       replacePackUrls(nextPack);
@@ -447,6 +658,11 @@ function App() {
       setNotice(nextPack.source === "agnes" ? "Agnes lesson pack saved in this browser." : "Sample mission saved in this browser.");
       return nextPack;
     } catch (error) {
+      // Pack-level failures now only happen if the lesson-images batch fully
+      // collapses (e.g. caller forced sample + sample pack rejected). The
+      // scheduler retries transient image errors and the builder swaps in
+      // sample SVGs for any individual word that still fails — so the kid
+      // keeps the words that did generate.
       const fallback = buildSampleLessonPack(missionWords, lessonMeta, { id: visualStyle.id, note: visualStyle.note });
       replacePackUrls(fallback);
       setPack(fallback);
@@ -471,8 +687,18 @@ function App() {
     if (!hasApiKey) return;
     setGenerating(true);
     setNotice("Redrawing your pictures in the new style.");
+    // Cancel any in-flight image/story/video jobs for this unit so the new
+    // style isn't racing the old one.
+    scheduler.cancelAll(({ id }) => id.includes(`:${activeUnitKey}:`) || id.endsWith(`:${activeUnitKey}`));
     try {
-      const nextPack = await buildAgnesLessonPack(missionWords, settings, lessonMeta, visualStyle);
+      const nextPack = await buildAgnesLessonPack(missionWords, settings, lessonMeta, visualStyle, {
+        imageBlobFetcher: (prompt, _index, word) =>
+          scheduler.enqueue({
+            id: `lessonImage:${activeUnitKey}:${word.id}:${Date.now()}`,
+            kind: "lessonImage",
+            run: (signal) => requestAgnesImage(settings, prompt, { signal })
+          })
+      });
       replacePackUrls(nextPack);
       setPack(nextPack);
       setActiveIndex((value) => Math.min(value, Math.max(nextPack.words.length - 1, 0)));
@@ -486,20 +712,29 @@ function App() {
     }
   }
 
-  // Apply a style the kid just picked. If real Agnes media already exists for
-  // the current pack, surface a confirmation modal (regen costs credits) before
-  // redrawing; otherwise just persist the pick — the next mission uses it.
-  function applyStylePick(id: string, note?: string) {
+  // Apply a per-unit style pick (the kid is choosing the look for the unit
+  // they're about to or are currently playing). If real Agnes media exists
+  // for this unit, surface a confirmation modal before regenerating; a
+  // missing pack just persists the pick so the next Start uses it.
+  async function applyStylePick(id: string, note?: string) {
     const label = getStyle(id)?.label ?? "Surprise Me";
-    const styleChanged = id !== (profile.visualStyleId ?? DEFAULT_STYLE_ID) || (note ?? "") !== (profile.visualStyleNote ?? "");
-    persistProfile({ ...profile, visualStyleId: id, visualStyleNote: note });
+    const styleChanged = id !== (currentUnitPick?.styleId ?? profile.visualStyleId ?? DEFAULT_STYLE_ID) ||
+      (note ?? "") !== (currentUnitPick?.styleNote ?? profile.visualStyleNote ?? "");
+    const pick: UnitStylePick = { styleId: id, styleNote: note, chosenAt: Date.now() };
+    setUnitStylePicks((current) => ({ ...current, [activeUnitKey]: pick }));
+    try {
+      await storage.saveUnitStyle(pick, activeUnitKey);
+    } catch {
+      // Persisted picks are nice-to-have; the in-memory copy still drives
+      // generation for this session.
+    }
     setStylePickerOpen(false);
     if (!styleChanged) return;
     const hasGeneratedMedia = pack?.source === "agnes" || (video.status === "completed" && Boolean(video.blob || video.url));
     if (hasGeneratedMedia && hasApiKey) {
       setPendingStyle({ id, note, label });
     } else {
-      setNotice(`Style set to ${label}. Your next mission will use it.`);
+      setNotice(`Style set to ${label}. The next start of this unit will use it.`);
     }
   }
 
@@ -573,127 +808,135 @@ function App() {
       });
       return;
     }
-
-    try {
-      // Agnes expects the seed image as a data URI string — blob: URLs are
-      // tab-scoped and won't fetch over HTTP. Re-encode the cached Blob.
-      const seedDataUri = pack.assets[0]?.imageBlob
-        ? await blobToDataUri(pack.assets[0].imageBlob)
-        : undefined;
-      const task = await createAgnesVideoTask(settings, videoRewardPrompt(pack, visualStyle.descriptor), seedDataUri);
-      setVideo(task);
-      await storage.saveVideo(task, activeUnitKey);
-      await refreshUnitSummaries();
-      setNotice("Video reward task created. You can poll while Agnes works.");
-    } catch (error) {
-      const failed = {
-        status: "failed" as const,
-        progress: 0,
-        error: error instanceof Error ? error.message : "Video generation failed."
-      };
-      setVideo(failed);
-      await storage.saveVideo(failed, activeUnitKey);
-      await refreshUnitSummaries();
-    }
-  }
-
-  async function pollVideoReward() {
-    if (!video.videoId) return;
-    try {
-      const next = await pollAgnesVideo(settings, video.videoId);
-      if (next.status === "completed" && next.url) {
-        // Capture the bytes before Agnes' CDN URL rotates — without this the
-        // cached entry would 404 the next time the kid opens the reward.
-        const blob = await fetchAgnesVideoBlob(next.url);
-        const objUrl = URL.createObjectURL(blob);
-        replaceVideoUrl(objUrl);
-        const final: VideoTaskState = { ...next, blob, url: objUrl };
-        setVideo(final);
-        await storage.saveVideo(final, activeUnitKey);
-        await refreshUnitSummaries();
-      } else {
-        setVideo(next);
-        await storage.saveVideo(next, activeUnitKey);
-        await refreshUnitSummaries();
-      }
-    } catch (error) {
-      setVideo({
-        ...video,
-        status: "failed",
-        error: error instanceof Error ? error.message : "Could not poll video."
-      });
-    }
+    // Manual retry button — runs the same pipeline as the reward-screen
+    // auto-trigger.
+    await runRewardPipeline(pack);
   }
 
   function needsRewardVideo(): boolean {
     return video.status === "idle" || video.status === "failed" || (video.status === "completed" && !video.url && !video.blob);
   }
 
-  // Lesson-start auto-generation variant: creates a fresh video task and walks
-  // the Agnes status endpoint until it completes or fails, downloading the bytes
-  // on success. Cancellation tokens unwind cleanly when the parent deletes the
-  // video, switches vocabulary, or unmounts the app mid-poll.
-  async function generateRewardVideoForPack(targetPack: LessonPack) {
+  // Reward pipeline: write a kid-friendly story with the text LLM, then
+  // submit a video task seeded by the first word image, then poll until
+  // ready and download the bytes.
+  //
+  // The pipeline runs only after the kid reaches the reward screen so we
+  // don't burn video credits on a lesson the kid abandons mid-way. Each
+  // step is funnelled through the media scheduler so transient Agnes
+  // errors retry transparently and a unit switch / style change can cancel
+  // the whole chain via cancelAll.
+  async function runRewardPipeline(targetPack: LessonPack) {
     if (isVideoBusy) return;
-    if (!hasApiKey) {
-      return;
-    }
+    if (!hasApiKey) return;
 
     cancelVideoPoll();
     const token = { cancelled: false };
     videoPollRef.current = token;
     setIsVideoBusy(true);
+    const unitKey = activeUnitKey;
 
     try {
-      setNotice("Asking Agnes to generate the reward video…");
+      // ----- 1. Story text -----
+      setVideo({ status: "running", stage: "writing-story", progress: 5 });
+      setNotice("Writing your reward story…");
+      let story: StoryText | undefined = targetPack.storyText;
+      if (!story) {
+        try {
+          story = await scheduler.enqueue({
+            id: `storyText:${unitKey}`,
+            kind: "storyText",
+            run: (signal) =>
+              requestAgnesStory(
+                settings,
+                targetPack.words.map((word) => ({ word: word.word, meaningZh: word.meaningZh })),
+                { signal }
+              )
+          });
+          story = { ...story, generatedAt: Date.now(), promptVersion: STORY_TEXT_PROMPT_VERSION };
+          const packWithStory: LessonPack = { ...targetPack, storyText: story };
+          setPack(packWithStory);
+          await storage.saveLesson(packWithStory, unitKey);
+          targetPack = packWithStory;
+        } catch {
+          // Story is nice-to-have for the video; fall back to the word-list
+          // prompt rather than blocking the reward entirely.
+          story = undefined;
+        }
+      }
+      if (token.cancelled) return;
+
+      // ----- 2. Create video task -----
+      setVideo({ status: "running", stage: "creating-task", progress: 25 });
+      setNotice("Asking Agnes to draw your reward video…");
       const seedDataUri = targetPack.assets[0]?.imageBlob
         ? await blobToDataUri(targetPack.assets[0].imageBlob)
         : undefined;
-      const task = await createAgnesVideoTask(settings, videoRewardPrompt(targetPack, visualStyle.descriptor), seedDataUri);
+      const prompt = story
+        ? videoRewardPromptFromStory(story, visualStyle.descriptor)
+        : videoRewardPrompt(targetPack, visualStyle.descriptor);
+      const task = await scheduler.enqueue({
+        id: `rewardVideo:${unitKey}:create`,
+        kind: "rewardVideo",
+        run: (signal) => createAgnesVideoTask(settings, prompt, seedDataUri, { signal })
+      });
       if (token.cancelled) return;
 
-      const queued: VideoTaskState = { ...task, blob: undefined, url: undefined };
+      const queued: VideoTaskState = { ...task, stage: "creating-task", blob: undefined, url: undefined };
       setVideo(queued);
-      await storage.saveVideo(queued, activeUnitKey);
+      await storage.saveVideo(queued, unitKey);
 
       const videoId = task.videoId;
       if (!videoId) throw new Error("Agnes did not return a video id.");
 
-      // Poll every ~5s. Each loop body checks the cancellation flag after each
-      // await so a Delete or vocab-change interrupts within one tick.
+      // ----- 3. Poll until ready -----
+      setVideo({ ...queued, status: "running", stage: "rendering", progress: 40 });
+      setNotice("Drawing your reward video — about a minute.");
+      let pollAttempt = 0;
       while (!token.cancelled) {
         await sleep(5000);
         if (token.cancelled) return;
-        const next = await pollAgnesVideo(settings, videoId);
+        pollAttempt += 1;
+        const next = await scheduler.enqueue({
+          id: `rewardVideo:${unitKey}:poll:${pollAttempt}`,
+          kind: "rewardVideo",
+          run: (signal) => pollAgnesVideo(settings, videoId, { signal })
+        });
         if (token.cancelled) return;
 
         if (next.status === "completed" && next.url) {
-          setNotice("Downloading reward video…");
-          const blob = await fetchAgnesVideoBlob(next.url);
+          // ----- 4. Download bytes -----
+          setVideo({ ...next, stage: "downloading", progress: 90 });
+          setNotice("Almost ready — downloading your video…");
+          const blob = await scheduler.enqueue({
+            id: `rewardVideo:${unitKey}:download`,
+            kind: "rewardVideo",
+            run: (signal) => fetchAgnesVideoBlob(next.url!, { signal })
+          });
           if (token.cancelled) return;
           const objUrl = URL.createObjectURL(blob);
           replaceVideoUrl(objUrl);
-          const final: VideoTaskState = { ...next, blob, url: objUrl };
+          const final: VideoTaskState = { ...next, stage: undefined, blob, url: objUrl, progress: 100 };
           setVideo(final);
-          await storage.saveVideo(final, activeUnitKey);
+          await storage.saveVideo(final, unitKey);
           await refreshUnitSummaries();
           setNotice("Reward video cached.");
           return;
         }
         if (next.status === "failed") {
-          setVideo(next);
-          await storage.saveVideo(next, activeUnitKey);
+          setVideo({ ...next, stage: undefined });
+          await storage.saveVideo({ ...next, stage: undefined }, unitKey);
           await refreshUnitSummaries();
           setNotice(next.error ?? "Reward video generation failed.");
           return;
         }
-        // Still queued/running — surface progress without keeping a stale URL.
-        setVideo({ ...next, blob: undefined, url: undefined });
+        // Still running — surface progress without keeping a stale URL.
+        setVideo({ ...next, stage: "rendering", blob: undefined, url: undefined });
       }
     } catch (error) {
       if (!token.cancelled) {
         const message = error instanceof Error ? error.message : "Reward video failed.";
-        setVideo((prev) => ({ ...prev, status: "failed", progress: prev.progress ?? 0, error: message }));
+        setVideo((prev) => ({ ...prev, status: "failed", stage: undefined, progress: prev.progress ?? 0, error: message }));
         setNotice(message);
       }
     } finally {
@@ -702,31 +945,138 @@ function App() {
     }
   }
 
+  // Lazy story-scene generation. The Story screen used to render the three
+  // sample story slots that simply reused word images by reference. We now
+  // wait for the kid to actually open Story, ask the LLM for a kid story
+  // (reusing the cached pack.storyText when it already exists), then
+  // generate one Agnes image per sentence and stream each scene into the
+  // pack as soon as the Blob lands.
+  async function ensureStoryScenes(targetPack: LessonPack) {
+    if (!hasApiKey) return;
+    if (targetPack.source !== "agnes") return;
+    if (targetPack.storyScenes.length > 0 && targetPack.storyScenes.every((scene) => scene.source === "agnes")) return;
+
+    const unitKey = activeUnitKey;
+    try {
+      let story = targetPack.storyText;
+      if (!story) {
+        story = await scheduler.enqueue({
+          id: `storyText:${unitKey}`,
+          kind: "storyText",
+          run: (signal) =>
+            requestAgnesStory(
+              settings,
+              targetPack.words.map((word) => ({ word: word.word, meaningZh: word.meaningZh })),
+              { signal }
+            )
+        });
+        story = { ...story, generatedAt: Date.now(), promptVersion: STORY_TEXT_PROMPT_VERSION };
+        const withStory = { ...targetPack, storyText: story };
+        setPack(withStory);
+        await storage.saveLesson(withStory, unitKey);
+        targetPack = withStory;
+      }
+
+      // Generate one image per sentence sequentially; the scheduler keeps
+      // them from clogging the image lane and they stream into the pack
+      // one-by-one so the Story screen can show a "scene N/3" placeholder.
+      const sentences = story.sentences;
+      for (let i = 0; i < sentences.length; i += 1) {
+        const sentence = sentences[i];
+        try {
+          const blob = await scheduler.enqueue({
+            id: `storyImage:${unitKey}:${i}`,
+            kind: "storyImage",
+            run: (signal) =>
+              requestAgnesImage(
+                settings,
+                buildStoryScenePrompt(sentence, visualStyle.descriptor, targetPack.words),
+                { signal }
+              )
+          });
+          setPack((prev) => {
+            if (!prev) return prev;
+            const nextScene = {
+              id: `story-${i + 1}`,
+              title: sentence.title,
+              text: sentence.en,
+              textZh: sentence.zh,
+              imageBlob: blob,
+              imageUrl: URL.createObjectURL(blob),
+              source: "agnes" as const
+            };
+            const nextPack = upsertStoryScene(prev, nextScene);
+            objectUrlsRef.current.push(nextScene.imageUrl);
+            void storage.saveLesson(nextPack, unitKey);
+            return nextPack;
+          });
+        } catch {
+          // A single scene failure shouldn't block the rest. The slot stays
+          // unfilled; StoryQuestInline shows a "drawing scene…" placeholder.
+        }
+      }
+    } catch {
+      // Story-text failure — leave scenes empty; the screen shows a
+      // friendly fallback.
+    }
+  }
+
   async function beginLesson() {
-    let lessonPack = pack;
-    if (!lessonPack) {
-      lessonPack = await startMission(false, "learn");
+    if (!pack && hasApiKey && !hasUnitStylePick) {
+      // Force a per-unit style pick before spending image credits.
+      setNotice("Pick a style for this unit, then we'll start generating.");
+      setStylePickerOpen(true);
+      return;
+    }
+    if (!pack) {
+      await startMission(false, "learn");
     } else {
       setScreen("learn");
     }
-    if (lessonPack && needsRewardVideo()) {
-      void generateRewardVideoForPack(lessonPack);
-    }
   }
+
+  // When the kid lands on the Story screen for the first time with a real
+  // Agnes pack, kick off the lazy story-scene generator. The effect is
+  // intentionally one-shot per (pack id, screen=story) entry — re-renders
+  // while still on Story don't re-fire because the pack's scenes get
+  // populated as the work progresses.
+  const storyEnsureRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (screen !== "story") return;
+    if (!pack) return;
+    if (pack.source !== "agnes") return;
+    if (storyEnsureRef.current === pack.id) return;
+    if (pack.storyScenes.length > 0 && pack.storyScenes.every((scene) => scene.source === "agnes")) return;
+    storyEnsureRef.current = pack.id;
+    void ensureStoryScenes(pack);
+  }, [pack, screen]);
+
+  // Reward auto-trigger: when the kid reaches the reward screen and we
+  // don't already have a usable video, run the story → video pipeline.
+  useEffect(() => {
+    if (screen !== "reward") return;
+    if (!pack) return;
+    if (!hasApiKey) return;
+    if (isVideoBusy) return;
+    if (!needsRewardVideo()) return;
+    void runRewardPipeline(pack);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pack, screen]);
 
   async function chooseLessonUnit(unitNumber: number) {
     await switchToUnit({ ...selection, unitNumber }, true);
   }
 
   const isLessonPicker = screen === "home";
+  const noticeDismissible = Boolean(notice) && !isGenerating && !isVideoBusy && !isOngoingNoticeText(notice);
 
   return (
     <div className={`app-shell theme-${profile.gender} ${isLessonPicker ? "lesson-picker-shell" : ""}`}>
       <TopBar
         profile={profile}
         missionTitle={missionTitle}
-        styleEmoji={currentStyleEmoji}
-        styleLabel={currentStyleLabel}
+        styleEmoji={unitStyleEmoji}
+        styleLabel={unitStyleLabel}
         compact={isLessonPicker}
         onPickStyle={() => setStylePickerOpen(true)}
         onSetup={() => setScreen("setup")}
@@ -735,7 +1085,7 @@ function App() {
         {screen === "setup" ? (
           <section className="setup-panel">
             <div className="setup-status-row">
-              <Notice text={notice} />
+              <Notice text={notice} dismissible={noticeDismissible} onDismiss={() => setNotice("")} />
               {isGenerating && <RequestSpinner label="Working on your mission…" />}
             </div>
             <ParentControlScreen
@@ -769,12 +1119,12 @@ function App() {
             units={bookUnits}
             selection={selection}
             unitSummaries={effectiveUnitSummaries}
+            unitCovers={unitCovers}
             settings={settings}
             mastery={mastery}
             video={video}
             activeIndex={activeIndex}
             activeWord={activeWord}
-            profile={profile}
             screen={screen}
             spellInput={spellInput}
             speechMessage={speechMessage}
@@ -782,7 +1132,15 @@ function App() {
             isGenerating={isGenerating}
             missionReady={missionReady}
             notice={notice}
+            noticeDismissible={noticeDismissible}
+            onDismissNotice={() => setNotice("")}
             celebration={celebration}
+            unitStyleLabel={unitStyleLabel}
+            unitStyleEmoji={unitStyleEmoji}
+            hasUnitStylePick={hasUnitStylePick}
+            hasApiKey={hasApiKey}
+            onPickUnitStyle={() => setStylePickerOpen(true)}
+            onUnitVisible={(unit) => void requestUnitCover(unit)}
             onGenerate={beginLesson}
             onSample={() => startMission(true, screen === "home" ? "learn" : "home")}
             onSelectUnit={(unitNumber) => void chooseLessonUnit(unitNumber)}
@@ -796,10 +1154,10 @@ function App() {
             onReward={() => setScreen("reward")}
             onSummary={() => setScreen("summary")}
             onHome={() => setScreen("home")}
+            onLearn={() => setScreen("learn")}
             onInput={setSpellInput}
             onCheckSpell={() => handleSpell(activeWord)}
             onCreateVideo={startVideoReward}
-            onPollVideo={pollVideoReward}
             onGameAnswer={(word, correct) => mark(word, "meaning", correct)}
             onStoryContinue={() => transitionWithCheer("Story complete!", "game")}
             onGameContinue={() => transitionWithCheer("Great matching!", "spell")}
@@ -810,10 +1168,12 @@ function App() {
       </main>
       {stylePickerOpen && (
         <VisualStylePicker
-          currentId={profile.visualStyleId ?? DEFAULT_STYLE_ID}
-          currentNote={profile.visualStyleNote}
+          scope="unit"
+          unitLabel={`Unit ${selection.unitNumber}`}
+          currentId={currentUnitPick?.styleId ?? profile.visualStyleId ?? DEFAULT_STYLE_ID}
+          currentNote={currentUnitPick?.styleNote ?? profile.visualStyleNote}
           onClose={() => setStylePickerOpen(false)}
-          onApply={(id, note) => applyStylePick(id, note)}
+          onApply={(id, note) => void applyStylePick(id, note)}
         />
       )}
       {pendingStyle && (
@@ -823,7 +1183,7 @@ function App() {
           onCancel={() => setPendingStyle(null)}
           onApplyNext={() => {
             setPendingStyle(null);
-            setNotice(`Style set to ${pendingStyle.label}. Your next mission will use it.`);
+            setNotice(`Style set to ${pendingStyle.label}. The next time you start this unit it will use the new look.`);
           }}
           onRedraw={() => {
             setPendingStyle(null);
@@ -840,12 +1200,12 @@ function MissionDashboard({
   units,
   selection,
   unitSummaries,
+  unitCovers,
   settings,
   mastery,
   video,
   activeIndex,
   activeWord,
-  profile,
   screen,
   spellInput,
   speechMessage,
@@ -853,6 +1213,8 @@ function MissionDashboard({
   isGenerating,
   missionReady,
   notice,
+  noticeDismissible,
+  onDismissNotice,
   onGenerate,
   onSample,
   onSelectUnit,
@@ -866,27 +1228,33 @@ function MissionDashboard({
   onReward,
   onSummary,
   onHome,
+  onLearn,
   onInput,
   onCheckSpell,
   onCreateVideo,
-  onPollVideo,
   onGameAnswer,
   onStoryContinue,
   onGameContinue,
   onSpellContinue,
   onRewardSummary,
-  celebration
+  celebration,
+  unitStyleLabel,
+  unitStyleEmoji,
+  hasUnitStylePick,
+  hasApiKey,
+  onPickUnitStyle,
+  onUnitVisible
 }: {
   pack: LessonPack;
   units: VocabularyUnit[];
   selection: VocabularySelection;
   unitSummaries: Record<number, UnitLessonSummary>;
+  unitCovers: Record<number, UnitCoverAsset>;
   settings: AgnesSettings;
   mastery: MissionMastery;
   video: VideoTaskState;
   activeIndex: number;
   activeWord: WordEntry;
-  profile: ChildProfile;
   screen: Screen;
   spellInput: string;
   speechMessage: string;
@@ -894,6 +1262,8 @@ function MissionDashboard({
   isGenerating: boolean;
   missionReady: boolean;
   notice: string;
+  noticeDismissible: boolean;
+  onDismissNotice: () => void;
   onGenerate: () => void;
   onSample: () => void;
   onSelectUnit: (unitNumber: number) => void;
@@ -907,107 +1277,119 @@ function MissionDashboard({
   onReward: () => void;
   onSummary: () => void;
   onHome: () => void;
+  onLearn: () => void;
   onInput: (value: string) => void;
   onCheckSpell: () => void;
   onCreateVideo: () => void;
-  onPollVideo: () => void;
   onGameAnswer: (word: WordEntry, correct: boolean) => void;
   onStoryContinue: () => void;
   onGameContinue: () => void;
   onSpellContinue: () => void;
   onRewardSummary: () => void;
   celebration: { cheer: string } | null;
+  unitStyleLabel: string;
+  unitStyleEmoji: string;
+  hasUnitStylePick: boolean;
+  hasApiKey: boolean;
+  onPickUnitStyle: () => void;
+  onUnitVisible: (unit: VocabularyUnit) => void;
 }) {
   const showLessonBoard = screen === "home";
+  const showNoticeRow = Boolean(notice) || isGenerating;
   return (
     <section className="mission-dashboard" aria-label="Word Planet mission dashboard">
-      <div className="dashboard-notice-row">
-        <Notice text={notice} />
-        {isGenerating && <RequestSpinner label="Working on your mission…" />}
-      </div>
+      {showNoticeRow && (
+        <div className="dashboard-notice-row">
+          <Notice text={notice} dismissible={noticeDismissible} onDismiss={onDismissNotice} />
+          {isGenerating && <RequestSpinner label="Working on your mission…" />}
+        </div>
+      )}
 
       {showLessonBoard ? (
         <LessonBoard
           units={units}
           selection={selection}
           summaries={unitSummaries}
+          covers={unitCovers}
           words={pack.words}
           missionReady={missionReady}
           isGenerating={isGenerating}
+          selectedStyleLabel={unitStyleLabel}
+          selectedStyleEmoji={unitStyleEmoji}
+          hasStylePick={hasUnitStylePick}
+          hasApiKey={hasApiKey}
           onSelectUnit={onSelectUnit}
           onStart={onGenerate}
           onSample={onSample}
+          onPickStyle={onPickUnitStyle}
+          onUnitVisible={onUnitVisible}
         />
       ) : (
         <>
-          <div className="learning-hero">
-            <section className="picture-panel">
-              <div className="picture-toolbar">
-                <button className="icon-button" onClick={onBackWord} disabled={activeIndex === 0} aria-label="Previous word">
-                  <ChevronLeft />
-                </button>
-                <span>{activeIndex + 1} / {pack.words.length}</span>
-              </div>
-              <img src={getWordImage(pack, activeWord.id)} alt={`${activeWord.word} illustration`} />
-            </section>
-
-            <CurrentWordPanel
-              word={activeWord}
-              settings={settings}
-              onNext={onNextWord}
-              onMarkMeaning={onMarkMeaning}
-              onSay={onSay}
-              speechMessage={speechMessage}
-            />
-
-            <ProgressPanel mastery={mastery} />
-          </div>
-
-          <ActivityRail
-            pack={pack}
-            activeWord={activeWord}
-            settings={settings}
-            mastery={mastery}
-            screen={screen}
-            video={video}
+          <MissionStepper
+            active={screen}
             complete={complete}
             missionReady={missionReady}
-            spellInput={spellInput}
-            onGenerate={onGenerate}
-            onSample={onSample}
+            video={video}
+            onLesson={onHome}
+            onLearn={onLearn}
             onStory={onStory}
-            onGame={onGame}
+            onGame={missionReady ? onGame : onGenerate}
             onSpell={onSpell}
             onReward={onReward}
             onSummary={onSummary}
-            onHome={onHome}
-            onInput={onInput}
-            onCheckSpell={onCheckSpell}
-            onCreateVideo={onCreateVideo}
-            onPollVideo={onPollVideo}
-            onGameAnswer={onGameAnswer}
-            onStoryContinue={onStoryContinue}
-            onGameContinue={onGameContinue}
-            onSpellContinue={onSpellContinue}
-            onRewardSummary={onRewardSummary}
           />
+          {screen === "learn" && (
+            <div className="learning-hero">
+              <section className="picture-panel">
+                <div className="picture-toolbar">
+                  <button className="icon-button" onClick={onBackWord} disabled={activeIndex === 0} aria-label="Previous word">
+                    <ChevronLeft />
+                  </button>
+                  <span>{activeIndex + 1} / {pack.words.length}</span>
+                </div>
+                <img src={getWordImage(pack, activeWord.id)} alt={`${activeWord.word} illustration`} />
+              </section>
+
+              <CurrentWordPanel
+                word={activeWord}
+                settings={settings}
+                onNext={onNextWord}
+                onMarkMeaning={onMarkMeaning}
+                onSay={onSay}
+                speechMessage={speechMessage}
+              />
+            </div>
+          )}
+
+          {screen !== "learn" && (
+            <section className="active-activity" aria-label="Current activity">
+              {screen === "story" && <StoryQuestInline pack={pack} onContinue={onStoryContinue} />}
+              {screen === "game" && <PictureGameInline pack={pack} onAnswer={onGameAnswer} onContinue={onGameContinue} />}
+              {screen === "spell" && (
+                <SpellingInline
+                  word={activeWord}
+                  settings={settings}
+                  spellInput={spellInput}
+                  onInput={onInput}
+                  onCheck={onCheckSpell}
+                  onContinue={onSpellContinue}
+                />
+              )}
+              {screen === "reward" && (
+                <RewardInline
+                  complete={complete}
+                  video={video}
+                  onCreate={onCreateVideo}
+                  onSummary={onRewardSummary}
+                />
+              )}
+              {screen === "summary" && <SummaryScreen mastery={mastery} onContinue={onHome} onPracticeAgain={onSpell} />}
+            </section>
+          )}
         </>
       )}
 
-      {!showLessonBoard && (
-        <MissionDock
-          active={screen}
-          complete={complete}
-          missionReady={missionReady}
-          video={video}
-          onLearn={onHome}
-          onStory={onStory}
-          onGame={missionReady ? onGame : onGenerate}
-          onSpell={onSpell}
-          onReward={onReward}
-          onSummary={onSummary}
-        />
-      )}
       {celebration && <CelebrationOverlay cheer={celebration.cheer} />}
     </section>
   );
@@ -1029,25 +1411,40 @@ function LessonBoard({
   units,
   selection,
   summaries,
+  covers,
   words,
   missionReady,
   isGenerating,
+  selectedStyleLabel,
+  selectedStyleEmoji,
+  hasStylePick,
+  hasApiKey,
   onSelectUnit,
   onStart,
-  onSample
+  onSample,
+  onPickStyle,
+  onUnitVisible
 }: {
   units: VocabularyUnit[];
   selection: VocabularySelection;
   summaries: Record<number, UnitLessonSummary>;
+  covers: Record<number, UnitCoverAsset>;
   words: WordEntry[];
   missionReady: boolean;
   isGenerating: boolean;
+  selectedStyleLabel: string;
+  selectedStyleEmoji: string;
+  hasStylePick: boolean;
+  hasApiKey: boolean;
   onSelectUnit: (unitNumber: number) => void;
   onStart: () => void;
   onSample: () => void;
+  onPickStyle: () => void;
+  onUnitVisible: (unit: VocabularyUnit) => void;
 }) {
   const selectedUnit = units.find((unit) => unit.unitNumber === selection.unitNumber);
   const selectedSummary = summaries[selection.unitNumber];
+  const selectedCover = covers[selection.unitNumber];
   const selectedStatus = unitStatusLabel(selectedSummary);
 
   return (
@@ -1064,34 +1461,30 @@ function LessonBoard({
         {units.map((unit) => {
           const summary = summaries[unit.unitNumber];
           const selected = unit.unitNumber === selection.unitNumber;
+          const hasCover = Boolean(covers[unit.unitNumber]?.imageUrl);
           return (
-            <button
+            <UnitCard
               key={unit.unitNumber}
-              className={`lesson-unit-card ${selected ? "selected" : ""}`}
-              type="button"
-              aria-label={`Unit ${unit.unitNumber}: ${unit.title}. ${unit.wordCount} words. ${unitStatusLabel(summary)}. ${
-                summary?.hasPack ? "Pictures saved" : "Pictures needed"
-              }. ${summary?.hasVideo ? "Video saved" : "Video later"}.`}
-              onClick={() => onSelectUnit(unit.unitNumber)}
-            >
-              <span className="lesson-unit-number">Unit {unit.unitNumber}</span>
-              <strong>{unit.title}</strong>
-              <span className="lesson-card-meta">
-                <small>{unit.wordCount} words</small>
-                <span className={`lesson-status ${unitStatusLabel(summary).toLowerCase().replace(" ", "-")}`}>
-                  {compactUnitStatusLabel(summary)}
-                </span>
-              </span>
-              <span className="lesson-media-dots" aria-hidden="true">
-                <span className={`media-dot ${summary?.hasPack ? "saved" : ""}`} />
-                <span className={`media-dot video ${summary?.hasVideo ? "saved" : ""}`} />
-              </span>
-            </button>
+              unit={unit}
+              summary={summary}
+              selected={selected}
+              hasCover={hasCover}
+              coverUrl={covers[unit.unitNumber]?.imageUrl}
+              onSelect={() => onSelectUnit(unit.unitNumber)}
+              onVisible={() => onUnitVisible(unit)}
+            />
           );
         })}
       </div>
 
       <section className="lesson-detail-panel" aria-label="Lesson detail">
+        <div className="lesson-detail-cover" aria-hidden="true">
+          {selectedCover?.imageUrl ? (
+            <img src={selectedCover.imageUrl} alt="" />
+          ) : (
+            <span className={`lesson-cover-placeholder tone-${(((selectedUnit?.unitNumber ?? selection.unitNumber) - 1) % 5) + 1}`} />
+          )}
+        </div>
         <div>
           <span className="detail-kicker">Lesson detail</span>
           <h3>
@@ -1104,6 +1497,20 @@ function LessonBoard({
           {words.map((word) => (
             <span key={word.id}>{word.word}</span>
           ))}
+        </div>
+        <div className="lesson-style-row" aria-label="Style for this unit">
+          <span className="lesson-style-row-label">
+            <Sparkles size={16} />
+            Style for this unit
+          </span>
+          <span className="lesson-style-row-value">
+            <span aria-hidden="true">{selectedStyleEmoji}</span>
+            <strong>{selectedStyleLabel}</strong>
+            {!hasStylePick && hasApiKey && <small>· tap Change to confirm</small>}
+          </span>
+          <button className="link-button" type="button" onClick={onPickStyle}>
+            Change
+          </button>
         </div>
         <div className="button-row">
           <button
@@ -1135,6 +1542,89 @@ function LessonBoard({
   );
 }
 
+// A single picker-grid tile that registers itself with an IntersectionObserver
+// and asks the App to generate its cover on first visibility. Once the
+// observer has fired we tear it down so re-renders don't re-fire the
+// scheduler enqueue (the scheduler dedupes by job id, but skipping the
+// extra call keeps things tidy).
+function UnitCard({
+  unit,
+  summary,
+  selected,
+  hasCover,
+  coverUrl,
+  onSelect,
+  onVisible
+}: {
+  unit: VocabularyUnit;
+  summary?: UnitLessonSummary;
+  selected: boolean;
+  hasCover: boolean;
+  coverUrl?: string;
+  onSelect: () => void;
+  onVisible: () => void;
+}) {
+  const buttonRef = useRef<HTMLButtonElement | null>(null);
+  const firedRef = useRef(false);
+  useEffect(() => {
+    if (hasCover) return;
+    if (firedRef.current) return;
+    const node = buttonRef.current;
+    if (!node) return;
+    if (typeof IntersectionObserver === "undefined") {
+      // Older browsers / jsdom: just request immediately so something fills in.
+      firedRef.current = true;
+      onVisible();
+      return;
+    }
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (entry.isIntersecting && !firedRef.current) {
+            firedRef.current = true;
+            onVisible();
+            observer.disconnect();
+            break;
+          }
+        }
+      },
+      { rootMargin: "200px" }
+    );
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [hasCover, onVisible]);
+
+  return (
+    <button
+      ref={buttonRef}
+      className={`lesson-unit-card ${selected ? "selected" : ""}`}
+      type="button"
+      aria-label={`Unit ${unit.unitNumber}: ${unit.title}. ${unit.wordCount} words. ${unitStatusLabel(summary)}. ${
+        summary?.hasPack ? "Pictures saved" : "Pictures needed"
+      }. ${summary?.hasVideo ? "Video saved" : "Video later"}.`}
+      onClick={onSelect}
+    >
+      <span className="lesson-card-cover" aria-hidden="true">
+        {coverUrl ? (
+          <img src={coverUrl} alt="" />
+        ) : (
+          <span className={`lesson-cover-placeholder tone-${((unit.unitNumber - 1) % 5) + 1}`} />
+        )}
+      </span>
+      <span className="lesson-card-top">
+        <span className="lesson-unit-number">Unit {unit.unitNumber}</span>
+        <span className={`lesson-status ${unitStatusLabel(summary).toLowerCase().replace(" ", "-")}`}>
+          {compactUnitStatusLabel(summary)}
+        </span>
+      </span>
+      <strong>{unit.title}</strong>
+      <span className="lesson-card-meta">
+        <small>{unit.wordCount} words</small>
+      </span>
+    </button>
+  );
+}
+
 function CurrentWordPanel({
   word,
   settings,
@@ -1152,252 +1642,105 @@ function CurrentWordPanel({
 }) {
   return (
     <section className="word-focus-card">
-      <span className="new-badge">
-        <Star size={20} fill="currentColor" />
-        New
-      </span>
-      <h2>{word.word}</h2>
-      <p className="meaning">{word.meaningZh}</p>
-      <div className="word-audio-row">
-        <button className="audio-orb" onClick={() => speak(word.word, 1)} aria-label={`Listen to ${word.word}`}>
-          <Volume2 />
-        </button>
-        <button className="slow-chip" onClick={() => speak(word.word, 0.65)}>
-          <span>🐢</span>
-          慢速播放
-        </button>
-      </div>
-      <button className="say-button" onClick={onSay}>
-        <Mic size={19} />
-        Say this word
-      </button>
-      {speechMessage && <p className="speech-message">{speechMessage}</p>}
-      <div className="sentence-box">
-        <button className="mini-sound" onClick={() => speak(word.example, 1)}>
-          <Volume2 size={16} />
-        </button>
-        <span>{word.example}</span>
-        <small>{word.exampleZh}</small>
-      </div>
-      <div className="button-row centered">
-        <button className="secondary-button" onClick={onMarkMeaning}>
-          I know it
-        </button>
-        <button className="primary-button" onClick={onNext}>
-          Next
-          <ArrowRight size={18} />
-        </button>
-      </div>
-    </section>
-  );
-}
-
-function ActivityRail({
-  pack,
-  activeWord,
-  settings,
-  mastery,
-  screen,
-  video,
-  complete,
-  missionReady,
-  spellInput,
-  onGenerate,
-  onSample,
-  onStory,
-  onGame,
-  onSpell,
-  onReward,
-  onSummary,
-  onHome,
-  onInput,
-  onCheckSpell,
-  onCreateVideo,
-  onPollVideo,
-  onGameAnswer,
-  onStoryContinue,
-  onGameContinue,
-  onSpellContinue,
-  onRewardSummary
-}: {
-  pack: LessonPack;
-  activeWord: WordEntry;
-  settings: AgnesSettings;
-  mastery: MissionMastery;
-  screen: Screen;
-  video: VideoTaskState;
-  complete: boolean;
-  missionReady: boolean;
-  spellInput: string;
-  onGenerate: () => void;
-  onSample: () => void;
-  onStory: () => void;
-  onGame: () => void;
-  onSpell: () => void;
-  onReward: () => void;
-  onSummary: () => void;
-  onHome: () => void;
-  onInput: (value: string) => void;
-  onCheckSpell: () => void;
-  onCreateVideo: () => void;
-  onPollVideo: () => void;
-  onGameAnswer: (word: WordEntry, correct: boolean) => void;
-  onStoryContinue: () => void;
-  onGameContinue: () => void;
-  onSpellContinue: () => void;
-  onRewardSummary: () => void;
-}) {
-  return (
-    <section className="activity-rail" aria-label="Mission activities">
-      <ActivityCard
-        number={1}
-        tone="story"
-        title="Story Quest"
-        subtitle="故事探险"
-        image={pack.storyScenes[0]?.imageUrl ?? getWordImage(pack, activeWord.id)}
-        caption="帮助小宇找到借阅的书籍"
-        buttonText="开始故事"
-        onClick={onStory}
-        completed={screen !== "home"}
-      />
-      <ActivityCard
-        number={2}
-        tone="game"
-        title="Picture Game"
-        subtitle="图片挑战"
-        image={getWordImage(pack, pack.words[1]?.id ?? activeWord.id)}
-        caption={`Which one is a ${activeWord.word}?`}
-        buttonText={missionReady ? "开始游戏" : "开始课程"}
-        onClick={missionReady ? onGame : onGenerate}
-        completed={screen === "spell" || screen === "reward" || screen === "summary"}
-      />
-      <ActivityCard
-        number={3}
-        tone="spell"
-        title="Spelling Time"
-        subtitle="拼写练习"
-        word={activeWord.word}
-        caption="听音拼出正确单词"
-        buttonText="开始拼写"
-        onClick={onSpell}
-        completed={screen === "reward" || screen === "summary"}
-      />
-      <ActivityCard
-        number={4}
-        tone="video"
-        title="Video Time"
-        subtitle="观看视频"
-        image={pack.storyScenes[1]?.imageUrl ?? getWordImage(pack, activeWord.id)}
-        caption="完成获得奖励！"
-        buttonText="观看视频"
-        onClick={onReward}
-        completed={video.status === "completed"}
-      />
-
-      {screen === "story" && <StoryQuestInline pack={pack} onContinue={onStoryContinue} />}
-      {screen === "game" && <PictureGameInline pack={pack} onAnswer={onGameAnswer} onContinue={onGameContinue} />}
-      {screen === "spell" && (
-        <SpellingInline
-          word={activeWord}
-          settings={settings}
-          spellInput={spellInput}
-          onInput={onInput}
-          onCheck={onCheckSpell}
-          onContinue={onSpellContinue}
-        />
-      )}
-      {screen === "reward" && (
-        <RewardInline
-          complete={complete}
-          video={video}
-          onCreate={onCreateVideo}
-          onPoll={onPollVideo}
-          onSummary={onRewardSummary}
-          onSample={onSample}
-        />
-      )}
-      {screen === "summary" && <SummaryScreen mastery={mastery} onContinue={onHome} onPracticeAgain={onSpell} />}
-    </section>
-  );
-}
-
-function ActivityCard({
-  number,
-  tone,
-  title,
-  subtitle,
-  image,
-  word,
-  caption,
-  buttonText,
-  completed,
-  onClick
-}: {
-  number: number;
-  tone: "story" | "game" | "spell" | "video";
-  title: string;
-  subtitle: string;
-  image?: string;
-  word?: string;
-  caption?: string;
-  buttonText: string;
-  completed: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <article className={`activity-card ${tone}`}>
-      <div className="activity-title">
-        <b>{number}</b>
-        <span>{title}</span>
-        <small>{subtitle}</small>
-      </div>
-      <div className="activity-preview">
-        {word ? (
-          <div className="spell-preview">
-            <strong>{word}</strong>
-            <Volume2 size={21} />
-            <div>
-              {word.split("").map((letter, index) => (
-                <span key={`${letter}-${index}`}>{letter}</span>
-              ))}
+      <div className="word-focus-content">
+        <span className="new-badge">
+          <Star size={20} fill="currentColor" />
+          New
+        </span>
+        <div className="word-title-group">
+          <h2>{word.word}</h2>
+          <p className="meaning">{word.meaningZh}</p>
+        </div>
+        <div className="word-audio-row">
+          <button className="audio-orb" onClick={() => speak(word.word, 1)} aria-label={`Listen to ${word.word}`}>
+            <Volume2 />
+          </button>
+          <button className="slow-chip" onClick={() => speak(word.word, 0.65)}>
+            <span>🐢</span>
+            慢速播放
+          </button>
+        </div>
+        <div className="word-action-cluster">
+          <button className="say-button" onClick={onSay}>
+            <Mic size={19} />
+            Say this word
+          </button>
+          {speechMessage && <p className="speech-message">{speechMessage}</p>}
+          {word.example && (
+            <div className="sentence-box">
+              <button className="mini-sound" onClick={() => speak(word.example, 1)}>
+                <Volume2 size={16} />
+              </button>
+              <span>{word.example}</span>
+              {word.exampleZh && <small>{word.exampleZh}</small>}
             </div>
+          )}
+          <div className="button-row centered">
+            <button className="secondary-button" onClick={onMarkMeaning}>
+              I know it
+            </button>
+            <button className="primary-button" onClick={onNext}>
+              Next
+              <ArrowRight size={18} />
+            </button>
           </div>
-        ) : (
-          image && <img src={image} alt={`${title} preview`} />
-        )}
-        {tone === "video" && (
-          <span className="play-ring">
-            <Play fill="currentColor" />
-          </span>
-        )}
-        {completed && (
-          <span className="done-dot">
-            <Check />
-          </span>
-        )}
+        </div>
       </div>
-      <p>{caption}</p>
-      <button className="activity-button" onClick={onClick}>
-        {buttonText}
-        <ArrowRight size={18} />
-      </button>
-    </article>
+    </section>
   );
 }
 
 function StoryQuestInline({ pack, onContinue }: { pack: LessonPack; onContinue: () => void }) {
-  const scene = pack.storyScenes[0];
+  const [sceneIndex, setSceneIndex] = useState(0);
+  // Total scene slots: real Agnes packs aim for 3 lazy scenes; sample packs
+  // ship 3 placeholder scenes. While Agnes scenes are still streaming in,
+  // we render placeholders for slots that don't have a scene yet so the
+  // kid sees progress without being blocked.
+  const expectedScenes = pack.source === "agnes" ? 3 : Math.max(pack.storyScenes.length, 1);
+  const scene = pack.storyScenes[sceneIndex];
+  const totalReady = pack.storyScenes.length;
+  const showPlaceholder = !scene && pack.source === "agnes";
+
+  function back() {
+    setSceneIndex((value) => Math.max(0, value - 1));
+  }
+  function next() {
+    if (sceneIndex < expectedScenes - 1) {
+      setSceneIndex((value) => Math.min(expectedScenes - 1, value + 1));
+    } else {
+      onContinue();
+    }
+  }
+
   return (
     <div className="inline-activity story">
-      <img src={scene.imageUrl} alt={scene.title} />
+      {showPlaceholder ? (
+        <div className="story-scene-placeholder">
+          <Loader2 className="spin" size={42} />
+          <span>Drawing scene {sceneIndex + 1}…</span>
+        </div>
+      ) : scene ? (
+        <img src={scene.imageUrl} alt={scene.title} />
+      ) : null}
       <div>
-        <h3>{scene.title}</h3>
-        <p>{scene.text}</p>
-        <small>{scene.textZh}</small>
-        <button className="primary-button" onClick={onContinue}>
-          Start Picture Game
-          <Gamepad2 size={18} />
-        </button>
+        <h3>{scene?.title ?? `Scene ${sceneIndex + 1}`}</h3>
+        <p>{scene?.text ?? "Your story scene is being drawn…"}</p>
+        {scene?.textZh && <small>{scene.textZh}</small>}
+        <div className="story-scene-progress" aria-label="Story scenes ready">
+          {Array.from({ length: expectedScenes }).map((_, i) => (
+            <span key={i} className={`story-scene-dot ${i < totalReady ? "ready" : "pending"} ${i === sceneIndex ? "current" : ""}`} />
+          ))}
+        </div>
+        <div className="button-row">
+          <button className="secondary-button" type="button" onClick={back} disabled={sceneIndex === 0}>
+            <ChevronLeft size={18} />
+            Back
+          </button>
+          <button className="primary-button" type="button" onClick={next}>
+            {sceneIndex < expectedScenes - 1 ? "Next scene" : "Start Picture Game"}
+            {sceneIndex < expectedScenes - 1 ? <ArrowRight size={18} /> : <Gamepad2 size={18} />}
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -1526,52 +1869,76 @@ function RewardInline({
   complete,
   video,
   onCreate,
-  onPoll,
-  onSummary,
-  onSample
+  onSummary
 }: {
   complete: boolean;
   video: VideoTaskState;
   onCreate: () => void;
-  onPoll: () => void;
   onSummary: () => void;
-  onSample: () => void;
 }) {
+  const stageCopy = rewardStageCopy(video, complete);
+  const inFlight = video.status === "running" || video.status === "queued";
   return (
     <div className="inline-activity reward">
       {video.url ? (
         <video controls src={video.url} />
       ) : (
         <div className="video-placeholder">
-          <Play size={58} />
-          <span>{video.error ?? (complete ? "Video status: ready" : "Practice is still open")}</span>
+          {inFlight ? <Loader2 className="spin" size={48} /> : <Play size={58} />}
+          <span>{video.error ?? stageCopy}</span>
+          {inFlight && video.progress > 0 && (
+            <progress className="video-progress" max={100} value={video.progress} aria-label="Reward video progress" />
+          )}
         </div>
       )}
       <div className="button-row centered">
-        <button className="primary-button" onClick={onCreate}>Create reward</button>
-        <button className="secondary-button" onClick={onPoll} disabled={!video.videoId || video.status === "completed"}>Poll video</button>
+        <button
+          className={`primary-button ${inFlight ? "busy-button" : ""}`}
+          onClick={onCreate}
+          disabled={inFlight}
+          aria-disabled={inFlight}
+          data-busy={inFlight ? "true" : undefined}
+        >
+          {video.url ? "Make a new reward" : inFlight ? "Working..." : "Create reward"}
+        </button>
         <button className="secondary-button" onClick={onSummary}>Summary</button>
-        <button className="secondary-button" onClick={onSample}>Reload sample</button>
       </div>
     </div>
   );
 }
 
-type MissionDockItem = {
-  id: "learn" | "story" | "game" | "spell" | "reward" | "summary";
+function rewardStageCopy(video: VideoTaskState, complete: boolean): string {
+  if (video.status === "completed" && !video.url && !video.blob) return "Sample reward ready";
+  if (video.status === "failed") return video.error ?? "Reward video failed. Tap to try again.";
+  switch (video.stage) {
+    case "writing-story":
+      return "✍️ Writing your story…";
+    case "creating-task":
+      return "🎬 Asking Agnes to draw your video…";
+    case "rendering":
+      return "🎨 Drawing your video — about a minute.";
+    case "downloading":
+      return "📥 Almost ready — downloading…";
+    default:
+      return complete ? "Video status: ready" : "Practice is still open";
+  }
+}
+
+type MissionStepperItem = {
+  id: "lesson" | "learn" | "story" | "game" | "spell" | "reward" | "summary";
   label: string;
-  detail: string;
   icon: LucideIcon;
   completed: boolean;
   disabled?: boolean;
   onClick: () => void;
 };
 
-function MissionDock({
+function MissionStepper({
   active,
   complete,
   missionReady,
   video,
+  onLesson,
   onLearn,
   onStory,
   onGame,
@@ -1583,6 +1950,7 @@ function MissionDock({
   complete: boolean;
   missionReady: boolean;
   video: VideoTaskState;
+  onLesson: () => void;
   onLearn: () => void;
   onStory: () => void;
   onGame: () => void;
@@ -1590,20 +1958,29 @@ function MissionDock({
   onReward: () => void;
   onSummary: () => void;
 }) {
-  const activeStep = active === "home" || active === "learn" ? "learn" : active;
-  const items: MissionDockItem[] = [
+  const activeStep: MissionStepperItem["id"] =
+    active === "learn" || active === "story" || active === "game" || active === "spell" || active === "reward" || active === "summary"
+      ? active
+      : "lesson";
+  const items: MissionStepperItem[] = [
+    {
+      id: "lesson",
+      label: "Lesson",
+      icon: LayoutGrid,
+      completed: active !== "home",
+      onClick: onLesson
+    },
     {
       id: "learn",
       label: "Learn",
-      detail: "Words",
       icon: BookOpen,
       completed: active !== "home" && active !== "learn",
+      disabled: !missionReady,
       onClick: onLearn
     },
     {
       id: "story",
       label: "Story",
-      detail: missionReady ? "Quest" : "Load first",
       icon: ClipboardList,
       completed: ["game", "spell", "reward", "summary"].includes(active),
       disabled: !missionReady,
@@ -1612,15 +1989,14 @@ function MissionDock({
     {
       id: "game",
       label: "Game",
-      detail: missionReady ? "Picture" : "Start",
       icon: Gamepad2,
       completed: ["spell", "reward", "summary"].includes(active),
+      disabled: !missionReady,
       onClick: onGame
     },
     {
       id: "spell",
       label: "Spell",
-      detail: "Letters",
       icon: Pencil,
       completed: ["reward", "summary"].includes(active),
       disabled: !missionReady,
@@ -1629,7 +2005,6 @@ function MissionDock({
     {
       id: "reward",
       label: "Reward",
-      detail: video.status === "completed" ? "Ready" : "Video",
       icon: Play,
       completed: video.status === "completed" || active === "summary",
       disabled: !missionReady,
@@ -1638,7 +2013,6 @@ function MissionDock({
     {
       id: "summary",
       label: "Summary",
-      detail: complete ? "Done" : "Locked",
       icon: Trophy,
       completed: complete,
       disabled: !complete && active !== "reward" && active !== "summary",
@@ -1647,23 +2021,22 @@ function MissionDock({
   ];
 
   return (
-    <nav className="mission-dock" aria-label="Mission steps">
+    <nav className="mission-stepper" aria-label="Mission steps">
       {items.map((item, index) => {
         const Icon = item.icon;
         const status = item.id === activeStep ? "active" : item.completed ? "complete" : item.disabled ? "locked" : "ready";
         return (
           <button
             key={item.id}
-            className={`mission-dock-item ${status}`}
+            className={`mission-stepper-item ${status}`}
             onClick={item.onClick}
             disabled={item.disabled}
             aria-current={item.id === activeStep ? "step" : undefined}
           >
-            <span className="dock-step">{item.completed ? <Check size={16} /> : index + 1}</span>
-            <Icon className="dock-icon" />
-            <span className="dock-copy">
+            <span className="stepper-step">{item.completed ? <Check size={16} /> : index + 1}</span>
+            <Icon className="stepper-icon" />
+            <span className="stepper-copy">
               <strong>{item.label}</strong>
-              <small>{item.detail}</small>
             </span>
           </button>
         );
@@ -1729,12 +2102,25 @@ function TopBar({
   );
 }
 
-function Notice({ text }: { text: string }) {
+export function Notice({
+  text,
+  dismissible = false,
+  onDismiss
+}: {
+  text: string;
+  dismissible?: boolean;
+  onDismiss?: () => void;
+}) {
   if (!text) return null;
   return (
     <div className="notice">
       <Sparkles size={18} />
-      {text}
+      <span>{text}</span>
+      {dismissible && onDismiss && (
+        <button className="notice-close" type="button" aria-label="Dismiss notice" onClick={onDismiss}>
+          <X size={16} />
+        </button>
+      )}
     </div>
   );
 }
@@ -1755,16 +2141,25 @@ function RequestSpinner({ label }: { label: string }) {
 function VisualStylePicker({
   currentId,
   currentNote,
+  scope = "profile",
+  unitLabel,
   onClose,
   onApply
 }: {
   currentId: string;
   currentNote?: string;
+  scope?: "profile" | "unit";
+  unitLabel?: string;
   onClose: () => void;
   onApply: (id: string, note?: string) => void;
 }) {
   const [selectedId, setSelectedId] = useState(currentId);
   const [note, setNote] = useState(currentNote ?? "");
+  const heading = scope === "unit" ? `Style for ${unitLabel ?? "this unit"} ✨` : "Choose your world ✨";
+  const hint =
+    scope === "unit"
+      ? "Pick a look just for this unit. We'll only start generating once you've chosen one."
+      : "Pick a look for your pictures and videos. You can change it any time.";
 
   return (
     <div className="media-viewer-backdrop" role="presentation" onClick={onClose}>
@@ -1772,17 +2167,17 @@ function VisualStylePicker({
         className="media-viewer style-picker"
         role="dialog"
         aria-modal="true"
-        aria-label="Choose your visual style"
+        aria-label={heading}
         onClick={(event) => event.stopPropagation()}
       >
         <div className="media-viewer-header">
-          <h2>Choose your world ✨</h2>
+          <h2>{heading}</h2>
           <button className="media-viewer-close" type="button" aria-label="Close style picker" onClick={onClose}>
             <X size={20} />
           </button>
         </div>
         <div className="style-picker-body">
-          <p className="style-picker-hint">Pick a look for your pictures and videos. You can change it any time.</p>
+          <p className="style-picker-hint">{hint}</p>
           <div className="style-grid">
             {VISUAL_STYLES.map((style) => (
               <button
@@ -2216,6 +2611,10 @@ export function ParentControlScreen({
             Video model
             <input value={settings.videoModel} onChange={(event) => onSettings({ ...settings, videoModel: event.target.value })} />
           </label>
+          <label>
+            Text model
+            <input value={settings.textModel} onChange={(event) => onSettings({ ...settings, textModel: event.target.value })} />
+          </label>
         </div>
         <TestRow
           label="Test Agnes connection"
@@ -2390,52 +2789,6 @@ function HomeScreen({
           Use Sample Mission
         </button>
       </div>
-    </div>
-  );
-}
-
-function ProgressPanel({ mastery }: { mastery: MissionMastery }) {
-  return (
-    <div className="progress-panel">
-      <h3>
-        单词掌握进度
-        <Info size={18} />
-      </h3>
-      <MasteryRow icon={<BookOpen />} label="Meaning" hint="含义理解" lane="meaning" mastery={mastery} color="green" />
-      <MasteryRow icon={<Mic />} label="Say" hint="发音跟读" lane="say" mastery={mastery} color="blue" />
-      <MasteryRow icon={<Pencil />} label="Write" hint="拼写默写" lane="write" mastery={mastery} color="orange" />
-    </div>
-  );
-}
-
-function MasteryRow({
-  icon,
-  label,
-  hint,
-  lane,
-  mastery,
-  color
-}: {
-  icon: React.ReactNode;
-  label: string;
-  hint: string;
-  lane: "meaning" | "say" | "write";
-  mastery: MissionMastery;
-  color: "green" | "blue" | "orange";
-}) {
-  const progress = laneProgress(mastery, lane);
-  const percent = progress.total ? (progress.completed / progress.total) * 100 : 0;
-  return (
-    <div className={`mastery-row ${color}`}>
-      <div className="mastery-icon">{icon}</div>
-      <div>
-        <strong>{label} <span>{hint}</span></strong>
-        <div className="meter">
-          <span style={{ width: `${percent}%` }} />
-        </div>
-        <small>再完成 {Math.max(progress.total - progress.completed, 0)} 题就能获得星星！</small>
-      </div>
-      <b><Star size={18} fill="currentColor" /> {progress.completed}/{progress.total}</b>
     </div>
   );
 }

@@ -46,6 +46,7 @@ export type AgnesSettings = {
   baseUrl: string;
   imageModel: string;
   videoModel: string;
+  textModel: string;
 };
 
 export type ParentControlSettings = {
@@ -84,6 +85,22 @@ export type LessonAsset = {
   source: "agnes" | "sample";
 };
 
+export type UnitCoverAsset = {
+  setId: string;
+  bookId: string;
+  unitNumber: number;
+  promptVersion: number;
+  artStyleId: string;
+  artStyleNote?: string;
+  // Raw bytes — persisted in IndexedDB so unit covers render without a fresh
+  // Agnes call after reload.
+  imageBlob: Blob;
+  // Transient object URL rebuilt from imageBlob on hydration; not persisted.
+  imageUrl: string;
+  source: "agnes" | "sample";
+  createdAt: number;
+};
+
 export type StoryScene = {
   id: string;
   title: string;
@@ -93,6 +110,34 @@ export type StoryScene = {
   imageBlob: Blob;
   // Transient object URL rebuilt from imageBlob on hydration; not persisted.
   imageUrl: string;
+  // "sample" scenes are the inline SVG placeholders that ship with the
+  // built-in sample pack. "agnes" scenes are real Agnes-generated images
+  // produced lazily when the kid first enters the Story screen. The lazy
+  // generator skips scenes already marked "agnes" so re-entering Story
+  // doesn't re-fire the Agnes call.
+  source?: "agnes" | "sample";
+};
+
+// LLM-written narrative that ties a mission's vocabulary into a short kid story.
+// Generated once when the kid first reaches the reward screen (or the Story
+// screen, whichever comes first) and persisted on the lesson pack so reloads
+// don't re-spend the credit. The story drives the reward-video prompt AND the
+// per-scene image prompts on the Story screen.
+export type StoryText = {
+  text: string;
+  textZh: string;
+  sentences: { en: string; zh: string; title: string }[];
+  generatedAt: number;
+  promptVersion: number;
+};
+
+// Per-unit style choice. The kid picks/confirms one of these on the lesson
+// picker before tapping Start; lesson images are only generated once a pick
+// exists. Persisted in IDB so the choice survives reloads.
+export type UnitStylePick = {
+  styleId: string;
+  styleNote?: string;
+  chosenAt: number;
 };
 
 export type LessonPack = {
@@ -107,6 +152,16 @@ export type LessonPack = {
   // stale pack and prompt for regeneration.
   artStyleId: string;
   artStyleNote?: string;
+  // Per-unit style choice that drove this pack. Mirrors artStyleId/Note at
+  // generation time but records the kid's explicit unit-scoped pick rather
+  // than the resolved descriptor. Used by the picker to surface "Style for
+  // this unit" without going back to IDB.
+  unitStyleId?: string;
+  unitStyleNote?: string;
+  // LLM-written story for this mission. Filled lazily when the kid first
+  // reaches the Story or Reward screen, then cached so subsequent visits
+  // reuse it.
+  storyText?: StoryText;
   words: WordEntry[];
   assets: LessonAsset[];
   storyScenes: StoryScene[];
@@ -126,6 +181,11 @@ export type VideoTaskState = {
   taskId?: string;
   status: "idle" | "queued" | "running" | "completed" | "failed";
   progress: number;
+  // Multi-stage progress label for the reward pipeline. "writing-story" runs
+  // the LLM story call; "creating-task" submits the Agnes video task;
+  // "rendering" is the polling loop; "downloading" pulls the finished CDN
+  // blob. Optional so old cached records hydrate cleanly.
+  stage?: "writing-story" | "creating-task" | "rendering" | "downloading";
   // Raw bytes of the completed video — persisted so the cache survives Agnes
   // CDN expiry. Absent while queued/running and on sample/error states.
   blob?: Blob;

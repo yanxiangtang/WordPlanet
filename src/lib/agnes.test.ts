@@ -2,11 +2,15 @@ import { describe, expect, it } from "vitest";
 import {
   base64ToBlob,
   buildAgnesConnectionTestRequest,
+  buildChatCompletionRequest,
+  buildExamplePrompt,
   buildImageGenerationRequest,
+  buildUnitCoverPrompt,
   buildVideoTaskRequest,
   extractVideoResultUrl,
   imagePromptForWord,
-  normalizeAgnesBaseUrl
+  normalizeAgnesBaseUrl,
+  parseExampleResponse
 } from "./agnes";
 import { selectMissionWords } from "../data/vocabulary";
 
@@ -21,7 +25,8 @@ describe("Agnes API helpers", () => {
       apiKey: "agnes-key",
       baseUrl: "https://apihub.agnes-ai.com/v1/",
       imageModel: "agnes-image-2.0-flash",
-      videoModel: "agnes-video-v2.0"
+      videoModel: "agnes-video-v2.0",
+      textModel: "gpt-4o-mini"
     });
 
     expect(request.url).toBe("https://apihub.agnes-ai.com/v1/models");
@@ -80,6 +85,26 @@ describe("Agnes API helpers", () => {
     expect(prompt).toContain(`Art style: ${descriptor}.`);
   });
 
+  it("builds text-free unit cover prompts from unit title, words, and style", () => {
+    const words = selectMissionWords("yilin-grade3", "3A", 5, 2);
+    const descriptor = "Warm 3D cartoon classroom adventure";
+    const prompt = buildUnitCoverPrompt(
+      { unitNumber: 2, title: "I'm Liu Tao" },
+      words,
+      descriptor
+    );
+
+    expect(prompt).toContain("Unit 2");
+    expect(prompt).toContain("I'm Liu Tao");
+    expect(prompt).toContain(words[0].word);
+    expect(prompt).toContain(words[1].word);
+    expect(prompt).toContain(`Art style: ${descriptor}.`);
+    expect(prompt).toMatch(/child-safe/i);
+    expect(prompt).toMatch(/No readable text/i);
+    expect(prompt).toMatch(/no letters/i);
+    expect(prompt).toMatch(/no watermark/i);
+  });
+
   it("decodes base64 strings into Blobs with the requested MIME type", async () => {
     // "WordPlanet" as raw bytes — round-trip via base64 to confirm we get the
     // same bytes back without the ~33% inflation a data URI string would carry.
@@ -96,5 +121,66 @@ describe("Agnes API helpers", () => {
     // can come from a different realm, which trips Vitest's strict-prototype
     // toEqual on typed arrays.
     expect(Array.from(new Uint8Array(buffer))).toEqual(Array.from(original));
+  });
+
+  it("asks the chat model for one example per word, anchored on the Chinese meaning", () => {
+    const prompt = buildExamplePrompt([
+      { word: "apple", meaningZh: "苹果" },
+      { word: "run", meaningZh: "跑" }
+    ]);
+
+    expect(prompt.system).toMatch(/8-10 year old/i);
+    expect(prompt.system).toMatch(/Output JSON only/i);
+    expect(prompt.user).toContain("1. apple — 苹果");
+    expect(prompt.user).toContain("2. run — 跑");
+    expect(prompt.user).toMatch(/"examples":\s*\[/);
+  });
+
+  it("requests JSON object responses from the chat model", () => {
+    const body = buildChatCompletionRequest({
+      model: "gpt-4o-mini",
+      system: "system msg",
+      user: "user msg"
+    });
+
+    expect(body.model).toBe("gpt-4o-mini");
+    expect(body.response_format).toEqual({ type: "json_object" });
+    expect(body.messages).toEqual([
+      { role: "system", content: "system msg" },
+      { role: "user", content: "user msg" }
+    ]);
+  });
+
+  it("parses chat-completion JSON with an examples array", () => {
+    const parsed = parseExampleResponse(
+      JSON.stringify({
+        examples: [
+          { word: "apple", example: "I eat an apple.", exampleZh: "我吃一个苹果。" },
+          { word: "run", example: "We run in the park.", exampleZh: "我们在公园里跑。" }
+        ]
+      })
+    );
+
+    expect(parsed).toEqual([
+      { word: "apple", example: "I eat an apple.", exampleZh: "我吃一个苹果。" },
+      { word: "run", example: "We run in the park.", exampleZh: "我们在公园里跑。" }
+    ]);
+  });
+
+  it("also accepts a bare top-level array and drops rows missing fields", () => {
+    const parsed = parseExampleResponse(
+      JSON.stringify([
+        { word: "apple", example: "I eat an apple.", exampleZh: "我吃一个苹果。" },
+        { word: "run", example: "We run." }, // missing exampleZh — drop
+        { word: "", example: "x", exampleZh: "y" } // blank word — drop
+      ])
+    );
+
+    expect(parsed).toHaveLength(1);
+    expect(parsed[0].word).toBe("apple");
+  });
+
+  it("returns an empty list when the chat reply is not valid JSON", () => {
+    expect(parseExampleResponse("oops not json")).toEqual([]);
   });
 });

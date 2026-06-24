@@ -97,25 +97,16 @@ button[data-busy="true"]::after {
   width: 100%;
   max-width: 100%;
   overflow-x: hidden;
+  /* Flexbox column so main-stage can claim all leftover viewport height
+     instead of the hero having to guess it via invented constants. */
+  display: flex;
+  flex-direction: column;
   background:
     radial-gradient(circle at 29% 4%, rgba(255, 255, 255, 0.95) 0 3px, transparent 4px),
     radial-gradient(circle at 67% 3%, rgba(255, 255, 255, 0.8) 0 2px, transparent 4px),
     radial-gradient(circle at 88% 8%, rgba(255, 255, 255, 0.9) 0 3px, transparent 5px),
-    linear-gradient(180deg, var(--dashboard-sky) 0 118px, #d8f4ff 118px 62%, var(--dashboard-grass) 100%);
+    linear-gradient(180deg, var(--dashboard-sky) 0 88px, #d8f4ff 88px 62%, var(--dashboard-grass) 100%);
   position: relative;
-}
-
-.app-shell::before {
-  content: "";
-  position: fixed;
-  inset: auto 0 66px;
-  height: 165px;
-  pointer-events: none;
-  background:
-    radial-gradient(120px 44px at 16% 92%, rgba(57, 151, 45, 0.52), transparent 70%),
-    radial-gradient(180px 58px at 78% 92%, rgba(57, 151, 45, 0.45), transparent 72%),
-    linear-gradient(180deg, transparent 0%, rgba(129, 206, 84, 0.4) 55%, rgba(73, 165, 53, 0.55) 100%);
-  z-index: 0;
 }
 
 .lesson-picker-shell {
@@ -123,11 +114,7 @@ button[data-busy="true"]::after {
   background:
     radial-gradient(circle at 29% 4%, rgba(255, 255, 255, 0.88) 0 3px, transparent 4px),
     radial-gradient(circle at 67% 3%, rgba(255, 255, 255, 0.72) 0 2px, transparent 4px),
-    linear-gradient(180deg, var(--theme-top) 0 142px, #dff4ff 142px 100%);
-}
-
-.lesson-picker-shell::before {
-  display: none;
+    linear-gradient(180deg, var(--theme-top) 0 110px, #dff4ff 110px 100%);
 }
 
 .theme-girl {
@@ -163,8 +150,8 @@ button[data-busy="true"]::after {
 }
 
 .top-bar {
-  height: 116px;
-  padding: 18px 40px 12px;
+  height: 88px;
+  padding: 10px 32px 8px;
   display: grid;
   grid-template-columns: minmax(220px, 0.75fr) minmax(320px, 1.25fr) minmax(260px, 0.9fr);
   align-items: center;
@@ -213,24 +200,24 @@ input {
 }
 
 .brand-mark {
-  gap: 14px;
+  gap: 10px;
   min-width: 0;
 }
 
 .planet-face {
-  width: 76px;
-  height: 76px;
+  width: 56px;
+  height: 56px;
   border-radius: 50%;
   display: grid;
   place-items: center;
-  font-size: 42px;
+  font-size: 30px;
   background: linear-gradient(180deg, #a5f173, #22a8d8);
-  box-shadow: inset 0 -8px 0 rgba(5, 83, 84, 0.16), 0 12px 24px rgba(6, 43, 91, 0.2);
+  box-shadow: inset 0 -6px 0 rgba(5, 83, 84, 0.16), 0 8px 18px rgba(6, 43, 91, 0.2);
 }
 
 .brand-mark h1 {
   margin: 0;
-  font-size: clamp(1.65rem, 2.4vw, 2.55rem);
+  font-size: clamp(1.3rem, 1.9vw, 1.95rem);
   line-height: 1;
   letter-spacing: 0;
   overflow: hidden;
@@ -239,7 +226,7 @@ input {
 
 .brand-mark strong {
   display: block;
-  font-size: clamp(1rem, 1.4vw, 1.45rem);
+  font-size: clamp(0.85rem, 1.15vw, 1.15rem);
   line-height: 1.15;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -249,17 +236,19 @@ input {
   min-width: 0;
   max-width: 100%;
   justify-content: flex-start;
-  gap: 12px;
+  gap: 10px;
   color: #112653;
   background: linear-gradient(180deg, #ffffff, #edf7ff);
   border: 1px solid rgba(255, 255, 255, 0.7);
-  border-radius: 30px;
-  padding: 12px 24px;
-  box-shadow: 0 14px 30px rgba(0, 41, 98, 0.22);
+  border-radius: 26px;
+  padding: 8px 18px;
+  box-shadow: 0 10px 22px rgba(0, 41, 98, 0.18);
 }
 
 .mission-pill svg {
   flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
 }
 
 .mission-pill span {
@@ -270,7 +259,7 @@ input {
 
 .mission-pill strong {
   min-width: 0;
-  font-size: clamp(1.1rem, 1.45vw, 1.45rem);
+  font-size: clamp(0.95rem, 1.25vw, 1.2rem);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -287,12 +276,12 @@ input {
 .avatar-button {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   color: white;
   border: 1px solid rgba(255, 255, 255, 0.28);
   background: rgba(255, 255, 255, 0.14);
-  border-radius: 20px;
-  padding: 9px 16px;
+  border-radius: 18px;
+  padding: 6px 12px;
   font-weight: 800;
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.1);
   min-width: 0;
@@ -300,13 +289,14 @@ input {
 
 .star-pill {
   flex: 0 0 auto;
-  padding: 9px 12px;
+  padding: 6px 10px;
 }
 
 .avatar-button {
-  flex: 0 1 170px;
-  min-width: 92px;
+  flex: 0 1 150px;
+  min-width: 80px;
   border-radius: 999px;
+  padding: 4px 12px 4px 4px;
 }
 
 .avatar-button span:not(.avatar-face) {
@@ -317,19 +307,30 @@ input {
 }
 
 .avatar-face {
-  width: 44px;
-  height: 44px;
+  width: 36px;
+  height: 36px;
   display: grid;
   place-items: center;
   border-radius: 50%;
-  font-size: 30px;
+  font-size: 24px;
   background: #ffd58a;
-  box-shadow: inset 0 -4px 0 rgba(125, 79, 0, 0.18);
+  box-shadow: inset 0 -3px 0 rgba(125, 79, 0, 0.18);
 }
 
 .main-stage {
-  display: block;
-  padding: 12px 24px 22px;
+  /* Claim every pixel below the top bar so the hero gets the real
+     available height instead of guessing it via 100vh - invented numbers.
+     Column flex lets .mission-dashboard fill us, which in turn lets
+     .learning-hero fill the dashboard's content area. The padding-top
+     is the visible sky-blue breathing strip between the top bar and the
+     white hero card — kept generous (not 12px) so the dock-band gap at
+     the bottom and the header gap at the top read as deliberately
+     matched spacing. */
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 22px 24px 22px;
   width: 100%;
   max-width: 100%;
   position: relative;
@@ -343,7 +344,13 @@ input {
 }
 
 .mission-dashboard {
-  display: grid;
+  /* Fill the .main-stage column so .learning-hero inherits the real
+     available height. Flex direction column makes the (optional) notice
+     row sit at natural height while the hero takes everything left. */
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
   gap: 12px;
 }
 
@@ -364,16 +371,24 @@ input {
 
 .learning-hero {
   display: grid;
-  grid-template-columns: minmax(280px, 1.1fr) minmax(0, 1fr) minmax(300px, 0.86fr);
-  gap: 18px;
-  min-height: 560px;
-  padding: 26px 28px 16px;
+  grid-template-columns: minmax(360px, 1.08fr) minmax(420px, 0.92fr);
+  align-items: stretch;
+  gap: clamp(18px, 2vw, 28px);
+  /* Fill the dashboard's leftover vertical space. The stepper sits above
+     us as a normal flex sibling, and flex-grow gives the hero whatever
+     room remains. min-height: 0 lets us shrink below content size on
+     short viewports; max-height keeps the hero from ballooning past a
+     comfortable reading height on huge displays. */
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: 820px;
+  margin-bottom: 0;
+  padding: clamp(16px, 1.7vw, 28px);
   border: 1px solid var(--dashboard-line);
   border-radius: 28px;
   background: var(--dashboard-panel);
   box-shadow: 0 22px 50px rgba(25, 92, 150, 0.18);
   backdrop-filter: blur(16px);
-  overflow: hidden;
 }
 
 .mission-sidebar,
@@ -437,10 +452,18 @@ input {
 .picture-panel,
 .word-focus-card {
   min-width: 0;
+  /* Grid items default to min-height: auto, which means they refuse to
+     shrink below their content size — so a tall image or a long word card
+     would push past .learning-hero's clamped height and overflow into the
+     fixed dock. Pinning min-height: 0 lets the children obey the hero's
+     track instead. */
+  min-height: 0;
   align-self: stretch;
 }
 
 .picture-panel {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
   padding: 0;
   border: 0;
   background: transparent;
@@ -451,8 +474,8 @@ input {
   display: flex;
   align-items: center;
   gap: 18px;
-  min-height: 58px;
-  margin-bottom: 16px;
+  min-height: 56px;
+  margin-bottom: 14px;
   color: var(--theme-primary);
   font-size: clamp(1.45rem, 2vw, 2.25rem);
   font-weight: 1000;
@@ -474,22 +497,26 @@ input {
 .picture-panel img {
   display: block;
   width: 100%;
-  aspect-ratio: 1.3 / 1;
-  height: calc(100% - 74px);
-  min-height: 360px;
+  height: 100%;
+  min-height: 0;
   object-fit: cover;
-  border-radius: 34px;
+  border-radius: 30px;
   box-shadow: 0 18px 35px rgba(48, 103, 149, 0.18);
 }
 
 .word-focus-card {
-  padding: 28px 24px 22px;
+  display: grid;
+  place-items: center;
+  padding: clamp(22px, 3vw, 46px);
   text-align: center;
-  border-radius: 34px;
+  border-radius: 30px;
   border: 1px solid #dcecff;
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(248, 252, 255, 0.96));
   box-shadow: 0 20px 42px rgba(62, 111, 162, 0.18);
   container-type: inline-size;
+  /* overflow: hidden clips any descendant that still overshoots — the kid
+     sees a clipped corner inside the card instead of a button hovering on
+     top of the fixed dock. */
   overflow: hidden;
 }
 
@@ -682,6 +709,25 @@ input {
   font-weight: 700;
   min-width: 0;
   overflow-wrap: anywhere;
+}
+
+.notice span {
+  min-width: 0;
+  flex: 1;
+}
+
+.notice-close {
+  flex: 0 0 auto;
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border-radius: 8px;
+  border: 1px solid rgba(95, 58, 0, 0.18);
+  color: #7c4b00;
+  background: rgba(255, 255, 255, 0.52);
+  box-shadow: none;
 }
 
 .request-spinner {
@@ -1176,15 +1222,17 @@ select:focus {
 
 .lesson-board {
   display: grid;
-  gap: 20px;
-  padding: 28px;
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.92);
-  border: 1px solid rgba(219, 234, 254, 0.9);
-  box-shadow: 0 18px 45px rgba(15, 23, 42, 0.12);
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 400px);
+  gap: 18px 22px;
+  padding: 26px;
+  border-radius: 26px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.95), rgba(245, 252, 255, 0.93));
+  border: 1px solid rgba(186, 230, 253, 0.9);
+  box-shadow: 0 18px 45px rgba(38, 97, 145, 0.13);
 }
 
 .lesson-board-header {
+  grid-column: 1 / -1;
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
@@ -1193,63 +1241,148 @@ select:focus {
 
 .lesson-board-header h2 {
   margin: 0 0 6px;
-  color: #102042;
-  font-size: 1.8rem;
+  color: #18205a;
+  font-size: clamp(2rem, 3vw, 3.4rem);
+  line-height: 1;
 }
 
 .lesson-board-header p {
   margin: 0;
-  color: #475569;
+  color: #5f6f91;
   font-weight: 800;
 }
 
 .lesson-count {
   flex: 0 0 auto;
-  padding: 8px 12px;
-  border-radius: 8px;
-  color: var(--theme-primary-dark);
-  background: var(--theme-primary-soft);
-  border: 1px solid var(--theme-primary-border);
+  padding: 9px 14px;
+  border-radius: 18px;
+  color: #b5256b;
+  background: #fff0f7;
+  border: 1px solid #ffc1dc;
   font-weight: 900;
 }
 
 .lesson-unit-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-  gap: 12px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 18px;
+  min-width: 0;
 }
 
 .lesson-unit-card {
   min-width: 0;
-  min-height: 126px;
+  min-height: 276px;
   display: grid;
-  align-content: start;
-  gap: 10px;
-  padding: 16px;
-  border-radius: 8px;
-  color: #102042;
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  gap: 12px;
+  padding: 14px;
+  border-radius: 18px;
+  color: #18205a;
   text-align: left;
-  background: #f8fbff;
-  border: 2px solid #dbeafe;
-  box-shadow: none;
+  background: #ffffff;
+  border: 2px solid #d8ecff;
+  box-shadow: 0 10px 22px rgba(52, 113, 171, 0.1);
+  overflow: hidden;
 }
 
 .lesson-unit-card.selected {
-  border-color: var(--theme-primary);
-  background: #ffffff;
-  box-shadow: 0 12px 24px color-mix(in srgb, var(--theme-primary) 18%, transparent);
+  border-color: #ef4f93;
+  background: #fffafd;
+  box-shadow: 0 14px 28px rgba(239, 79, 147, 0.18);
+}
+
+.lesson-card-cover,
+.lesson-detail-cover {
+  min-width: 0;
+  display: block;
+  border-radius: 14px;
+  overflow: hidden;
+  background: #e8f7ff;
+}
+
+.lesson-card-cover {
+  aspect-ratio: 16 / 10;
+}
+
+.lesson-card-cover img,
+.lesson-detail-cover img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.lesson-cover-placeholder {
+  width: 100%;
+  height: 100%;
+  min-height: 118px;
+  display: grid;
+  place-items: center;
+  background: linear-gradient(135deg, #e5f7ff, #fff6cc);
+}
+
+.lesson-cover-placeholder::before {
+  content: "";
+  width: 52px;
+  height: 52px;
+  border-radius: 18px;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.82), rgba(255, 255, 255, 0.26)),
+    currentColor;
+  color: #8bdcf4;
+  box-shadow: 0 12px 24px rgba(39, 133, 177, 0.14);
+}
+
+.lesson-cover-placeholder.tone-2 {
+  background: linear-gradient(135deg, #fff0f7, #fff7d6);
+}
+
+.lesson-cover-placeholder.tone-2::before {
+  color: #ffc1dc;
+}
+
+.lesson-cover-placeholder.tone-3 {
+  background: linear-gradient(135deg, #e6fff7, #e9f5ff);
+}
+
+.lesson-cover-placeholder.tone-3::before {
+  color: #8cead5;
+}
+
+.lesson-cover-placeholder.tone-4 {
+  background: linear-gradient(135deg, #fff8d8, #eaf8ff);
+}
+
+.lesson-cover-placeholder.tone-4::before {
+  color: #fbd56c;
+}
+
+.lesson-cover-placeholder.tone-5 {
+  background: linear-gradient(135deg, #f3efff, #e8fbff);
+}
+
+.lesson-cover-placeholder.tone-5::before {
+  color: #c9b9ff;
+}
+
+.lesson-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
 }
 
 .lesson-unit-number,
 .detail-kicker {
-  color: #64748b;
+  color: #68789a;
   font-size: 0.78rem;
   font-weight: 900;
   text-transform: uppercase;
 }
 
 .lesson-unit-card strong {
-  font-size: 1.05rem;
+  align-self: start;
+  font-size: 1.15rem;
   line-height: 1.15;
   overflow-wrap: anywhere;
   display: -webkit-box;
@@ -1261,29 +1394,29 @@ select:focus {
 .lesson-card-meta {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-start;
   gap: 8px;
 }
 
 .lesson-card-meta small {
-  color: #64748b;
+  color: #7b87a2;
   font-weight: 900;
   white-space: nowrap;
 }
 
 .lesson-status {
   flex: 0 0 auto;
-  padding: 5px 8px;
-  border-radius: 8px;
-  color: #0f766e;
-  background: #ccfbf1;
+  padding: 6px 9px;
+  border-radius: 12px;
+  color: #07966e;
+  background: #c9f9e8;
   font-size: 0.78rem;
   font-weight: 900;
 }
 
 .lesson-status.not-started {
-  color: #475569;
-  background: #e2e8f0;
+  color: #0b78d0;
+  background: #dff2ff;
 }
 
 .lesson-status.complete {
@@ -1291,47 +1424,32 @@ select:focus {
   background: #dcfce7;
 }
 
-.lesson-media-dots {
-  display: flex;
-  gap: 7px;
-  align-items: center;
-}
-
-.media-dot {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  background: #cbd5e1;
-  box-shadow: inset 0 0 0 2px #e2e8f0;
-}
-
-.media-dot.video {
-  border-radius: 3px;
-}
-
-.media-dot.saved {
-  background: var(--theme-primary);
-  box-shadow: none;
-}
-
 .lesson-detail-panel {
+  align-self: start;
   display: grid;
-  gap: 14px;
-  padding: 18px;
-  border-radius: 8px;
-  background: #fff8e8;
-  border: 1px solid #fde68a;
+  gap: 16px;
+  padding: 22px;
+  border-radius: 24px;
+  background: linear-gradient(180deg, #fffdf5, #fff5d8);
+  border: 2px solid #fee68b;
+  box-shadow: 0 16px 32px rgba(185, 126, 22, 0.12);
+}
+
+.lesson-detail-cover {
+  aspect-ratio: 16 / 10;
+  border: 1px solid rgba(251, 211, 108, 0.75);
 }
 
 .lesson-detail-panel h3 {
   margin: 4px 0;
-  color: #102042;
-  font-size: 1.35rem;
+  color: #18205a;
+  font-size: clamp(1.55rem, 2vw, 2.25rem);
+  line-height: 1.08;
 }
 
 .lesson-detail-panel p {
   margin: 0;
-  color: #64748b;
+  color: #6f7790;
   font-weight: 900;
 }
 
@@ -1342,12 +1460,91 @@ select:focus {
 }
 
 .lesson-word-preview span {
-  padding: 8px 10px;
-  border-radius: 8px;
-  color: #0f4e99;
-  background: #e7f5ff;
-  border: 1px solid #bee3ff;
+  padding: 9px 12px;
+  border-radius: 12px;
+  color: #0861bd;
+  background: #e5f4ff;
+  border: 1px solid #b9e1ff;
   font-weight: 900;
+}
+
+/* Per-unit style row sits between the word preview and the Start buttons.
+   It tells the kid which style this unit will draw in and offers a Change
+   action. When no per-unit pick has been made yet, the inline "tap Change to
+   confirm" hint nudges them to confirm before generation starts. */
+.lesson-style-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border-radius: 14px;
+  background: linear-gradient(135deg, #f7f3ff 0%, #ecf6ff 100%);
+  border: 1px solid #d8d2f0;
+  margin: 8px 0 4px;
+  flex-wrap: wrap;
+}
+
+.lesson-style-row-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 800;
+  color: #4b3e7c;
+}
+
+.lesson-style-row-value {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 1rem;
+  color: #2a1d57;
+  flex: 1;
+  min-width: 0;
+}
+
+.lesson-style-row-value small {
+  color: #6c628f;
+  font-weight: 600;
+}
+
+/* Story scenes: while Agnes draws scene N, the inline activity shows a
+   placeholder card and a dot strip that tracks how many of the expected
+   scenes are already loaded. */
+.story-scene-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  min-height: 240px;
+  width: 100%;
+  border-radius: 18px;
+  background: #f4f7ff;
+  border: 1px dashed #b8c5ee;
+  color: #4f5da6;
+  font-weight: 700;
+}
+
+.story-scene-progress {
+  display: inline-flex;
+  gap: 6px;
+  margin: 12px 0 16px;
+}
+
+.story-scene-dot {
+  width: 28px;
+  height: 6px;
+  border-radius: 999px;
+  background: #d8d4e7;
+}
+
+.story-scene-dot.ready {
+  background: #6c5dd3;
+}
+
+.story-scene-dot.current {
+  outline: 2px solid #1f1f3a;
+  outline-offset: 2px;
 }
 
 .word-strip {
@@ -1419,9 +1616,28 @@ select:focus {
   font-weight: 900;
 }
 
+.word-focus-content {
+  width: min(100%, 560px);
+  /* No min-height floor — the content sizes to its parent card, never the
+     other way around. A rigid 620px floor would force the card past the
+     hero's clamped height on short viewports and overflow into the dock. */
+  max-height: 100%;
+  display: grid;
+  grid-template-rows: auto auto auto auto;
+  align-content: center;
+  justify-items: center;
+  gap: clamp(14px, 2.6vh, 30px);
+}
+
+.word-title-group {
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+}
+
 .word-card h2,
 .word-focus-card h2 {
-  margin: 16px 0 0;
+  margin: 0;
   max-width: 100%;
   font-size: clamp(3.6rem, 18cqw, 7.1rem);
   line-height: 1;
@@ -1440,7 +1656,7 @@ select:focus {
 }
 
 .meaning {
-  margin: 10px 0 18px;
+  margin: 0;
   font-size: clamp(2rem, 3vw, 2.75rem);
   color: #475569;
   font-weight: 800;
@@ -1463,7 +1679,7 @@ select:focus {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 16px;
+  gap: clamp(14px, 2vw, 24px);
   flex-wrap: wrap;
 }
 
@@ -1495,20 +1711,28 @@ select:focus {
   box-shadow: 0 8px 18px rgba(39, 82, 130, 0.08);
 }
 
+.word-action-cluster {
+  width: min(100%, 440px);
+  display: grid;
+  justify-items: center;
+  gap: 12px;
+}
+
 .say-button {
-  margin: 14px auto 0;
+  min-width: min(100%, 240px);
   color: var(--theme-primary-dark);
   background: var(--theme-primary-soft);
   border: 1px solid var(--theme-primary-border);
 }
 
 .speech-message {
+  margin: 0;
   color: var(--theme-primary-dark);
   font-weight: 800;
 }
 
 .sentence-box {
-  margin: 20px auto 16px;
+  margin: 4px auto;
   max-width: 560px;
   display: grid;
   grid-template-columns: auto 1fr;
@@ -1603,221 +1827,19 @@ select:focus {
   font-weight: 900;
 }
 
-.activity-rail {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 16px;
-  padding: 16px 18px 18px;
-  border: 1px solid var(--dashboard-line);
-  border-radius: 28px;
-  background: rgba(255, 255, 255, 0.96);
-  box-shadow: 0 18px 42px rgba(25, 92, 150, 0.16);
-}
-
-.activity-card {
-  position: relative;
-  min-width: 0;
-  padding: 14px;
-  display: grid;
-  grid-template-rows: 42px 1fr 32px 54px;
-  align-items: stretch;
-  border-radius: 20px;
-  border: 1px solid;
-  background: white;
-  box-shadow: 0 10px 20px rgba(53, 99, 145, 0.09);
-}
-
-.activity-card.story {
-  --activity-color: #20b520;
-  border-color: #b7e6a4;
-  color: var(--activity-color);
-}
-
-.activity-card.game {
-  --activity-color: #147ce8;
-  border-color: #acd4ff;
-  color: var(--activity-color);
-}
-
-.activity-card.spell {
-  --activity-color: #ff6b00;
-  border-color: #ffc997;
-  color: var(--activity-color);
-}
-
-.activity-card.video {
-  --activity-color: #7040c8;
-  border-color: #d5b9ff;
-  color: var(--activity-color);
-}
-
-.activity-title {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  min-height: 42px;
-  font-weight: 1000;
-  overflow: hidden;
-}
-
-.activity-title b {
-  width: 34px;
-  height: 34px;
-  display: inline-grid;
-  place-items: center;
-  border-radius: 50%;
-  color: white;
-  background: var(--activity-color);
-  box-shadow: inset 0 -4px 0 rgba(0, 0, 0, 0.13);
-}
-
-.activity-title span {
-  color: var(--activity-color);
-  font-size: 1.2rem;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.activity-title small {
-  flex: 0 0 auto;
-  color: var(--activity-color);
-  font-size: 0.86rem;
-  white-space: nowrap;
-}
-
-.activity-preview {
-  position: relative;
-  margin: 10px 0;
-  min-height: 196px;
-  border-radius: 14px;
-  overflow: hidden;
-  background: #f4f9ff;
-}
-
-.activity-card.spell .activity-preview {
-  background: #fffaf5;
-}
-
-.activity-preview img {
-  display: block;
-  width: 100%;
-  height: 100%;
-  min-height: 196px;
-  object-fit: cover;
-}
-
-.activity-card p {
-  min-height: 32px;
-  margin: 0 0 10px;
-  color: #607087;
-  text-align: center;
-  font-weight: 800;
-  display: grid;
-  place-items: center;
-  overflow-wrap: anywhere;
-}
-
-.activity-button {
-  width: 100%;
-  min-height: 54px;
-  border: 0;
-  border-radius: 18px;
-  color: white;
-  background: linear-gradient(180deg, var(--activity-color), color-mix(in srgb, var(--activity-color) 78%, #000 22%));
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
-  font-weight: 1000;
-  font-size: 1.05rem;
-  box-shadow: 0 10px 18px color-mix(in srgb, var(--activity-color) 22%, transparent);
-}
-
-.done-dot {
-  position: absolute;
-  right: 10px;
-  bottom: 10px;
-  width: 48px;
-  height: 48px;
-  display: grid;
-  place-items: center;
-  border-radius: 50%;
-  color: white;
-  background: #35bd22;
-  border: 4px solid white;
-  box-shadow: 0 7px 15px rgba(35, 114, 32, 0.24);
-}
-
-.play-ring {
-  position: absolute;
-  inset: 50% auto auto 50%;
-  width: 72px;
-  height: 72px;
-  display: grid;
-  place-items: center;
-  transform: translate(-50%, -50%);
-  border-radius: 50%;
-  color: white;
-  background: rgba(255, 255, 255, 0.2);
-  border: 5px solid white;
-  box-shadow: 0 8px 18px rgba(36, 40, 80, 0.2);
-}
-
-.spell-preview {
-  height: 100%;
-  min-height: 196px;
-  padding: 24px 12px 16px;
-  display: grid;
-  place-items: center;
-  gap: 14px;
-  color: #071b44;
-  background: #fffaf5;
-}
-
-.spell-preview strong {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 12px 24px;
-  border-radius: 14px;
-  color: #111827;
-  background: white;
-  border: 1px solid #e5e7eb;
-  font-size: clamp(1.7rem, 2.5vw, 2.2rem);
-}
-
-.spell-preview > svg {
-  color: var(--theme-primary);
-}
-
-.spell-preview div {
-  display: flex;
-  justify-content: center;
-  gap: 6px;
-  flex-wrap: wrap;
-}
-
-.spell-preview span {
-  width: 32px;
-  height: 38px;
-  display: grid;
-  place-items: center;
-  border-radius: 7px;
-  color: #111827;
-  background: white;
-  border: 1px solid #8ed071;
-  font-size: 1.3rem;
-  font-weight: 900;
-}
-
-.inline-activity {
-  grid-column: 1 / -1;
+.active-activity {
   display: grid;
   gap: 18px;
   padding: 18px;
   border-radius: 22px;
   border: 1px solid #cfe8ff;
   background: linear-gradient(180deg, #ffffff, #f5fbff);
+  box-shadow: 0 18px 42px rgba(25, 92, 150, 0.12);
+}
+
+.inline-activity {
+  display: grid;
+  gap: 18px;
 }
 
 .inline-activity.story {
@@ -1946,99 +1968,95 @@ video {
   border-radius: 8px;
 }
 
-.mission-dock {
+/* Horizontal step rail above the hero. Lives in normal flow as a flex
+   item of .mission-dashboard, so it scrolls with content and never
+   competes with the hero for a fixed bottom safe-area. flex: 0 0 auto
+   pins it to its content height so the hero (flex: 1) can claim the rest.
+   On narrow viewports the row scrolls horizontally instead of wrapping —
+   the kid keeps a continuous left-to-right journey rather than jumbled
+   chips on multiple lines. */
+.mission-stepper {
+  flex: 0 0 auto;
   display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
+  grid-template-columns: repeat(7, minmax(0, 1fr));
   align-items: stretch;
   gap: 10px;
-  min-height: 92px;
-  padding: 10px;
-  border-radius: 28px;
-  border: 1px solid rgba(209, 226, 245, 0.95);
-  background: rgba(255, 255, 255, 0.97);
-  box-shadow: 0 -10px 30px rgba(25, 92, 150, 0.12), 0 16px 34px rgba(25, 92, 150, 0.12);
+  padding: 0;
+  margin: 0;
 }
 
-.mission-dock-item {
+.mission-stepper-item {
   min-width: 0;
-  min-height: 72px;
+  min-height: 60px;
   display: grid;
-  grid-template-columns: 30px 32px minmax(0, 1fr);
+  grid-template-columns: 28px 28px minmax(0, 1fr);
   align-items: center;
   gap: 8px;
-  padding: 10px;
+  padding: 8px 10px;
   border: 1px solid #d8e8f8;
-  border-radius: 18px;
+  border-radius: 14px;
   color: #5b6980;
-  background: #f8fbff;
+  background: rgba(255, 255, 255, 0.94);
   font-weight: 900;
   text-align: left;
-  box-shadow: inset 0 -2px 0 rgba(47, 99, 151, 0.04);
+  box-shadow: 0 6px 14px rgba(25, 92, 150, 0.08);
 }
 
-.mission-dock-item.ready:hover,
-.mission-dock-item.active {
+.mission-stepper-item.ready:hover,
+.mission-stepper-item.active {
   color: var(--theme-primary);
   border-color: var(--theme-primary-border);
   background: linear-gradient(180deg, #ffffff, var(--theme-primary-soft));
 }
 
-.mission-dock-item.complete {
+.mission-stepper-item.complete {
   color: #258116;
   border-color: #bce8ad;
   background: #f2ffe9;
 }
 
-.mission-dock-item.locked {
+.mission-stepper-item.locked {
   color: #92a0b4;
   background: #f4f7fb;
 }
 
-.dock-step {
-  width: 28px;
-  height: 28px;
+.stepper-step {
+  width: 26px;
+  height: 26px;
   display: grid;
   place-items: center;
   border-radius: 50%;
   color: white;
   background: currentColor;
   box-shadow: inset 0 -3px 0 rgba(0, 0, 0, 0.12);
+  font-size: 0.85rem;
 }
 
-.dock-step svg {
+.stepper-step svg {
   color: white;
 }
 
-.dock-icon {
-  width: 30px;
-  height: 30px;
+.stepper-icon {
+  width: 24px;
+  height: 24px;
 }
 
-.dock-copy {
+.stepper-copy {
   min-width: 0;
   display: grid;
   gap: 2px;
 }
 
-.dock-copy strong,
-.dock-copy small {
+.stepper-copy strong {
+  color: #102042;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.dock-copy strong {
-  color: #102042;
-}
-
-.mission-dock-item.active .dock-copy strong,
-.mission-dock-item.complete .dock-copy strong {
+.mission-stepper-item.active .stepper-copy strong,
+.mission-stepper-item.complete .stepper-copy strong {
   color: currentColor;
-}
-
-.dock-copy small {
-  color: #718096;
-  font-size: 0.78rem;
 }
 
 .summary-grid {
@@ -2059,30 +2077,17 @@ video {
 
 @media (max-width: 1320px) {
   .learning-hero {
-    grid-template-columns: minmax(280px, 1fr) minmax(340px, 1fr);
+    grid-template-columns: minmax(320px, 1fr) minmax(380px, 0.9fr);
+  }
+}
+
+@media (max-width: 1180px) {
+  .lesson-board {
+    grid-template-columns: 1fr;
   }
 
-  .progress-panel {
-    grid-column: 1 / -1;
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 12px;
-    padding: 16px 0 0;
-    border-left: 0;
-    border-top: 1px solid #cfe8ff;
-  }
-
-  .progress-panel h3 {
-    grid-column: 1 / -1;
-    margin-bottom: 0;
-  }
-
-  .mastery-row {
-    margin-top: 0;
-  }
-
-  .activity-rail {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+  .lesson-detail-panel {
+    align-self: stretch;
   }
 }
 
@@ -2101,9 +2106,10 @@ video {
     justify-content: flex-start;
   }
 
-  .main-stage {
-    display: block;
-  }
+  /* .main-stage stays display: flex (column) at this breakpoint — the old
+     display: block override broke the flex chain (app-shell → main-stage
+     → dashboard → hero) on tablet widths, letting the hero collapse to
+     content size and the dock to overlap. */
 
   .mission-sidebar {
     grid-template-columns: 1fr;
@@ -2114,7 +2120,7 @@ video {
   .app-shell {
     background:
       radial-gradient(circle at 20% 6%, rgba(255, 255, 255, 0.9) 0 2px, transparent 4px),
-      linear-gradient(180deg, var(--dashboard-sky) 0 258px, #d8f4ff 258px 68%, var(--dashboard-grass) 100%);
+      linear-gradient(180deg, var(--dashboard-sky) 0 200px, #d8f4ff 200px 68%, var(--dashboard-grass) 100%);
   }
 
   .top-bar,
@@ -2127,6 +2133,11 @@ video {
     width: 100%;
     max-width: 100%;
     overflow: hidden;
+  }
+
+  .lesson-picker-shell .top-bar {
+    height: auto;
+    grid-template-columns: 1fr;
   }
 
   .brand-mark,
@@ -2165,7 +2176,6 @@ video {
   .choice-grid,
   .mini-choice-grid,
   .learning-hero,
-  .activity-rail,
   .inline-activity.story,
   .spell-card,
   .summary-grid {
@@ -2176,14 +2186,29 @@ video {
     grid-template-columns: 1fr;
   }
 
+  .lesson-board {
+    padding: 18px;
+    border-radius: 22px;
+  }
+
+  .lesson-unit-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .learning-hero,
-  .activity-rail,
+  .active-activity,
   .setup-panel {
     border-radius: 22px;
     padding: 14px;
   }
 
+  .learning-hero {
+    height: auto;
+    min-height: 0;
+  }
+
   .picture-panel img {
+    height: auto;
     min-height: 240px;
     border-radius: 22px;
   }
@@ -2195,7 +2220,17 @@ video {
 
   .word-focus-card {
     border-radius: 22px;
-    padding: 20px 14px;
+    min-height: 480px;
+    padding: 24px 14px;
+  }
+
+  .word-focus-content {
+    min-height: 0;
+    gap: 18px;
+  }
+
+  .word-action-cluster {
+    gap: 10px;
   }
 
   .audio-orb {
@@ -2203,65 +2238,43 @@ video {
     height: 76px;
   }
 
-  .progress-panel {
-    grid-template-columns: 1fr;
-    gap: 10px;
+  .mission-stepper {
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    gap: 6px;
   }
 
-  .mastery-row {
-    grid-template-columns: 70px minmax(0, 1fr);
-    min-height: 112px;
-    gap: 10px;
-  }
-
-  .mastery-icon {
-    width: 58px;
-    height: 58px;
-  }
-
-  .activity-title {
-    flex-wrap: wrap;
-  }
-
-  .mission-dock {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 7px;
-    padding: 8px;
-    border-radius: 22px;
-  }
-
-  .mission-dock-item {
-    min-height: 66px;
-    grid-template-columns: 24px minmax(0, 1fr);
+  .mission-stepper-item {
+    min-height: 56px;
+    grid-template-columns: 22px minmax(0, 1fr);
     grid-template-areas:
       "step copy"
       "icon copy";
-    gap: 2px 7px;
-    padding: 8px;
+    gap: 2px 4px;
+    padding: 6px 4px;
   }
 
-  .dock-step {
+  .stepper-step {
     grid-area: step;
-    width: 23px;
-    height: 23px;
+    width: 22px;
+    height: 22px;
     font-size: 0.78rem;
   }
 
-  .dock-icon {
+  .stepper-icon {
     grid-area: icon;
     width: 22px;
     height: 22px;
   }
 
-  .dock-copy {
+  .stepper-copy {
     grid-area: copy;
   }
 
-  .dock-copy strong {
-    font-size: 0.9rem;
+  .stepper-copy strong {
+    font-size: 0.85rem;
   }
 
-  .dock-copy small {
+  .stepper-copy small {
     font-size: 0.72rem;
   }
 
@@ -2280,8 +2293,31 @@ video {
 }
 
 @media (max-width: 560px) {
-  .mission-dock {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+  .lesson-board-header {
+    display: grid;
+  }
+
+  .lesson-unit-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .lesson-unit-card {
+    min-height: 0;
+  }
+
+  .lesson-detail-panel {
+    padding: 16px;
+  }
+
+  .mission-stepper {
+    grid-template-columns: repeat(7, minmax(76px, 1fr));
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scrollbar-width: none;
+  }
+
+  .mission-stepper::-webkit-scrollbar {
+    display: none;
   }
 
   .setup-status-row {

@@ -1,11 +1,11 @@
-import { act } from "react";
+import { act, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { selectMissionWords } from "./data/vocabulary";
 import { buildSampleLessonPack } from "./lib/lesson";
 import { createEmptyMastery, recordMasteryResult } from "./lib/mastery";
 import { defaultParentControlSettings, defaultProfile, defaultSettings, defaultVocabularySelection } from "./lib/storage";
-import App, { ParentControlScreen, SummaryScreen } from "./App";
+import App, { Notice, ParentControlScreen, SummaryScreen } from "./App";
 import type { VideoTaskState, VocabularySet } from "./types";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -35,6 +35,58 @@ const bookUnits = [
 const unitSummaries = {
   1: { hasPack: false, hasVideo: false, hasProgress: false, complete: false }
 };
+
+function NoticeHarness({ text, dismissible }: { text: string; dismissible: boolean }) {
+  const [message, setMessage] = useState(text);
+  return <Notice text={message} dismissible={dismissible} onDismiss={() => setMessage("")} />;
+}
+
+describe("notice banner", () => {
+  let root: Root | undefined;
+  let container: HTMLDivElement | undefined;
+
+  afterEach(() => {
+    if (root) {
+      act(() => root?.unmount());
+    }
+    container?.remove();
+    root = undefined;
+    container = undefined;
+  });
+
+  it("lets dismissible failure notices be closed", () => {
+    const mount = document.createElement("div");
+    container = mount;
+    document.body.append(mount);
+    root = createRoot(mount);
+
+    act(() => {
+      root?.render(<NoticeHarness text="Reward video generation failed." dismissible={true} />);
+    });
+
+    expect(mount.textContent).toContain("Reward video generation failed.");
+    const close = mount.querySelector<HTMLButtonElement>('[aria-label="Dismiss notice"]');
+    expect(close).not.toBeNull();
+
+    act(() => close?.click());
+
+    expect(mount.textContent).not.toContain("Reward video generation failed.");
+  });
+
+  it("does not show a close action for ongoing status notices", () => {
+    const mount = document.createElement("div");
+    container = mount;
+    document.body.append(mount);
+    root = createRoot(mount);
+
+    act(() => {
+      root?.render(<NoticeHarness text="Asking Agnes to generate the reward video..." dismissible={false} />);
+    });
+
+    expect(mount.textContent).toContain("Asking Agnes to generate the reward video...");
+    expect(mount.querySelector<HTMLButtonElement>('[aria-label="Dismiss notice"]')).toBeNull();
+  });
+});
 
 describe("mission dock navigation", () => {
   let root: Root | undefined;
@@ -69,7 +121,7 @@ describe("mission dock navigation", () => {
       await Promise.resolve();
     });
 
-    const dock = mount.querySelector<HTMLElement>(".mission-dock");
+    const dock = mount.querySelector<HTMLElement>(".mission-stepper");
     expect(dock).not.toBeNull();
     expect(dock?.getAttribute("aria-label")).toBe("Mission steps");
 
@@ -149,7 +201,7 @@ describe("mission dock navigation", () => {
       await Promise.resolve();
     });
 
-    const activeDockItem = mount.querySelector<HTMLElement>(".mission-dock-item.active");
+    const activeDockItem = mount.querySelector<HTMLElement>(".mission-stepper-item.active");
     expect(activeDockItem?.textContent).toContain("Spell");
     expect(window.location.search).toContain("page=spell");
 
@@ -197,7 +249,8 @@ describe("kid lesson board", () => {
     expect(mount.textContent).toContain("Hello!");
     expect(mount.textContent).toContain("Unit 2");
     expect(mount.textContent).toContain("I'm Liu Tao");
-    expect(mount.querySelector(".mission-dock")).toBeNull();
+    expect(mount.querySelectorAll(".lesson-cover-placeholder").length).toBeGreaterThan(0);
+    expect(mount.querySelector(".mission-stepper")).toBeNull();
   });
 
   it("opens lesson detail before starting a unit lesson", async () => {
@@ -224,7 +277,8 @@ describe("kid lesson board", () => {
     expect(mount.textContent).toContain("are");
     expect(mount.textContent).toContain("you");
     expect(mount.textContent).toContain("Start Lesson");
-    expect(mount.querySelector(".mission-dock")).toBeNull();
+    expect(mount.querySelector(".lesson-detail-cover")).not.toBeNull();
+    expect(mount.querySelector(".mission-stepper")).toBeNull();
 
     const start = Array.from(mount.querySelectorAll<HTMLButtonElement>("button")).find((button) =>
       button.textContent?.includes("Start Lesson")
@@ -270,6 +324,35 @@ describe("kid lesson board", () => {
 
     expect(mount.querySelector(".lesson-board")).toBeNull();
     expect(mount.querySelector<HTMLElement>(".word-focus-card")?.textContent).toContain("are");
+  });
+
+  it("shows a Style for this unit row with a Change action on the lesson detail", async () => {
+    const mount = document.createElement("div");
+    container = mount;
+    document.body.append(mount);
+    root = createRoot(mount);
+
+    await act(async () => {
+      root?.render(<App />);
+      await Promise.resolve();
+    });
+
+    const styleRow = mount.querySelector<HTMLElement>(".lesson-style-row");
+    expect(styleRow).not.toBeNull();
+    expect(styleRow?.textContent).toContain("Style for this unit");
+
+    const change = Array.from(mount.querySelectorAll<HTMLButtonElement>("button")).find(
+      (button) => button.textContent?.trim() === "Change"
+    );
+    expect(change).toBeTruthy();
+
+    await act(async () => {
+      change?.click();
+      await Promise.resolve();
+    });
+
+    const dialog = mount.querySelector<HTMLElement>("[role='dialog']");
+    expect(dialog?.textContent).toContain("Style for");
   });
 });
 

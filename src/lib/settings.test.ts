@@ -4,6 +4,7 @@ import {
   defaultParentControlSettings,
   defaultSettings,
   defaultVocabularySelection,
+  isUnitCoverFresh,
   loadLearningPageState,
   loadParentControlSettings,
   loadSettings,
@@ -12,8 +13,11 @@ import {
   saveParentControlSettings,
   saveSettings,
   saveVocabularySelection,
+  stripUnitCoverObjectUrl,
+  unitCoverStorageKey,
   unitStorageKey
 } from "./storage";
+import type { UnitCoverAsset } from "../types";
 
 describe("app settings", () => {
   beforeEach(() => {
@@ -162,5 +166,48 @@ describe("app settings", () => {
 
   it("builds stable unit-scoped storage keys", () => {
     expect(unitStorageKey({ setId: "yilin-grade3", bookId: "3A", unitNumber: 2 })).toBe("yilin-grade3:3A:unit-2");
+  });
+
+  it("builds stable unit-cover storage keys", () => {
+    expect(unitCoverStorageKey({ setId: "yilin-grade3", bookId: "3A", unitNumber: 2 })).toBe("yilin-grade3:3A:cover-2");
+  });
+
+  it("strips transient object URLs before persisting unit covers", () => {
+    const cover: UnitCoverAsset = {
+      setId: "yilin-grade3",
+      bookId: "3A",
+      unitNumber: 2,
+      promptVersion: 1,
+      artStyleId: "auto",
+      imageBlob: new Blob(["cover"], { type: "image/png" }),
+      imageUrl: "blob:unit-cover",
+      source: "agnes",
+      createdAt: 123
+    };
+
+    expect(stripUnitCoverObjectUrl(cover)).toEqual({
+      ...cover,
+      imageUrl: ""
+    });
+  });
+
+  it("treats stale prompt versions or mismatched art styles as needing regeneration", () => {
+    const cover: UnitCoverAsset = {
+      setId: "yilin-grade3",
+      bookId: "3A",
+      unitNumber: 2,
+      promptVersion: 1,
+      artStyleId: "auto",
+      artStyleNote: "soft classroom",
+      imageBlob: new Blob(["cover"], { type: "image/png" }),
+      imageUrl: "",
+      source: "agnes",
+      createdAt: 123
+    };
+
+    expect(isUnitCoverFresh(cover, { promptVersion: 1, artStyleId: "auto", artStyleNote: "soft classroom" })).toBe(true);
+    expect(isUnitCoverFresh(cover, { promptVersion: 2, artStyleId: "auto", artStyleNote: "soft classroom" })).toBe(false);
+    expect(isUnitCoverFresh(cover, { promptVersion: 1, artStyleId: "storybook", artStyleNote: "soft classroom" })).toBe(false);
+    expect(isUnitCoverFresh(cover, { promptVersion: 1, artStyleId: "auto", artStyleNote: "new note" })).toBe(false);
   });
 });

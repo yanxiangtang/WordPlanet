@@ -6,6 +6,8 @@ import type {
   LessonPack,
   MissionMastery,
   ParentControlSettings,
+  UnitCoverAsset,
+  UnitStylePick,
   VideoTaskState,
   VocabularySelection
 } from "../types";
@@ -16,7 +18,7 @@ const PARENT_CONTROLS_KEY = "word-planet:parent-controls:v1";
 const LEARNING_PAGE_KEY = "word-planet:learning-page:v1";
 const VOCAB_SELECTION_KEY = "word-planet:vocabulary-selection:v1";
 const DB_NAME = "word-planet";
-const DB_VERSION = 3;
+const DB_VERSION = 5;
 const RESTORABLE_SCREENS = new Set<LearningScreen>(["home", "learn", "story", "game", "spell", "reward", "summary"]);
 const WORDS_PER_MISSION_OPTIONS = [5, 8, 10];
 
@@ -24,7 +26,8 @@ export const defaultSettings: AgnesSettings = {
   apiKey: "",
   baseUrl: "https://apihub.agnes-ai.com",
   imageModel: "agnes-image-2.0-flash",
-  videoModel: "agnes-video-v2.0"
+  videoModel: "agnes-video-v2.0",
+  textModel: "gpt-4o-mini"
 };
 
 export const defaultProfile: ChildProfile = {
@@ -146,7 +149,7 @@ function openDb(): Promise<IDBDatabase> {
     request.onupgradeneeded = (event) => {
       const db = request.result;
       const tx = request.transaction;
-      for (const store of ["lessons", "mastery", "video", "learning"]) {
+      for (const store of ["lessons", "mastery", "video", "learning", "unitCovers", "unitStyles"]) {
         if (!db.objectStoreNames.contains(store)) db.createObjectStore(store);
       }
       // v1 -> v2: previous records held base64 data URI strings / Agnes CDN
@@ -161,6 +164,10 @@ function openDb(): Promise<IDBDatabase> {
           }
         }
       }
+      // v4 -> v5 just adds the `unitStyles` store; the loop above creates it
+      // if missing, so no data migration is required and existing records in
+      // `lessons` / `mastery` / `video` / `learning` / `unitCovers` are
+      // preserved untouched.
     };
     request.onsuccess = () => resolve(request.result);
     request.onerror = () => reject(request.error);
@@ -169,6 +176,10 @@ function openDb(): Promise<IDBDatabase> {
 
 export function unitStorageKey(selection: Pick<VocabularySelection, "setId" | "bookId" | "unitNumber">): string {
   return `${selection.setId}:${selection.bookId}:unit-${selection.unitNumber}`;
+}
+
+export function unitCoverStorageKey(selection: Pick<VocabularySelection, "setId" | "bookId" | "unitNumber">): string {
+  return `${selection.setId}:${selection.bookId}:cover-${selection.unitNumber}`;
 }
 
 async function put<T>(storeName: string, key: string, value: T): Promise<void> {
@@ -225,6 +236,25 @@ function stripVideoObjectUrl(video: VideoTaskState): VideoTaskState {
   return rest;
 }
 
+export function stripUnitCoverObjectUrl(cover: UnitCoverAsset): UnitCoverAsset {
+  return {
+    ...cover,
+    imageUrl: ""
+  };
+}
+
+export function isUnitCoverFresh(
+  cover: UnitCoverAsset | undefined,
+  criteria: { promptVersion: number; artStyleId: string; artStyleNote?: string }
+): cover is UnitCoverAsset {
+  return Boolean(
+    cover &&
+      cover.promptVersion === criteria.promptVersion &&
+      cover.artStyleId === criteria.artStyleId &&
+      (cover.artStyleNote ?? "") === (criteria.artStyleNote ?? "")
+  );
+}
+
 export const storage = {
   getLesson: (key = "active") => get<LessonPack>("lessons", key),
   saveLesson: (lesson: LessonPack, key = "active") => put("lessons", key, stripLessonObjectUrls(lesson)),
@@ -235,5 +265,15 @@ export const storage = {
   saveVideo: (video: VideoTaskState, key = "active") => put("video", key, stripVideoObjectUrl(video)),
   deleteVideo: (key = "active") => remove("video", key),
   getLearningPageState: (key = "active") => get<LearningPageState>("learning", key),
-  saveLearningPageState: (state: LearningPageState, key = "active") => put("learning", key, state)
+  saveLearningPageState: (state: LearningPageState, key = "active") => put("learning", key, state),
+  getUnitCover: (key: string) => get<UnitCoverAsset>("unitCovers", key),
+  saveUnitCover: (cover: UnitCoverAsset, key = unitCoverStorageKey(cover)) =>
+    put("unitCovers", key, stripUnitCoverObjectUrl(cover)),
+  deleteUnitCover: (key: string) => remove("unitCovers", key),
+  // Per-unit style picks. Same key as `lessons` (unitStorageKey) so a pick
+  // can be looked up given a vocabulary selection without knowing whether a
+  // lesson pack has been generated yet.
+  getUnitStyle: (key: string) => get<UnitStylePick>("unitStyles", key),
+  saveUnitStyle: (pick: UnitStylePick, key: string) => put("unitStyles", key, pick),
+  deleteUnitStyle: (key: string) => remove("unitStyles", key)
 };
