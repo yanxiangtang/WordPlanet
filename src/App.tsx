@@ -1316,8 +1316,6 @@ function MissionDashboard({
           isGenerating={isGenerating}
           selectedStyleLabel={unitStyleLabel}
           selectedStyleEmoji={unitStyleEmoji}
-          hasStylePick={hasUnitStylePick}
-          hasApiKey={hasApiKey}
           onSelectUnit={onSelectUnit}
           onStart={onGenerate}
           onSample={onSample}
@@ -1417,8 +1415,6 @@ function LessonBoard({
   isGenerating,
   selectedStyleLabel,
   selectedStyleEmoji,
-  hasStylePick,
-  hasApiKey,
   onSelectUnit,
   onStart,
   onSample,
@@ -1434,8 +1430,6 @@ function LessonBoard({
   isGenerating: boolean;
   selectedStyleLabel: string;
   selectedStyleEmoji: string;
-  hasStylePick: boolean;
-  hasApiKey: boolean;
   onSelectUnit: (unitNumber: number) => void;
   onStart: () => void;
   onSample: () => void;
@@ -1506,7 +1500,6 @@ function LessonBoard({
           <span className="lesson-style-row-value">
             <span aria-hidden="true">{selectedStyleEmoji}</span>
             <strong>{selectedStyleLabel}</strong>
-            {!hasStylePick && hasApiKey && <small>· tap Change to confirm</small>}
           </span>
           <button className="link-button" type="button" onClick={onPickStyle}>
             Change

@@ -94,4 +94,21 @@ describe("lesson picker cover layout", () => {
     expect(css).toMatch(/@media\s*\(max-width:\s*900px\)[\s\S]*\.lesson-unit-grid\s*{[\s\S]*grid-template-columns\s*:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\)/);
     expect(css).toMatch(/@media\s*\(max-width:\s*560px\)[\s\S]*\.lesson-unit-grid\s*{[\s\S]*grid-template-columns\s*:\s*1fr/);
   });
+
+  it("keeps the lesson style picker text from colliding on narrow detail panels", () => {
+    const styleRowRule = css.match(/\.lesson-style-row\s*{(?<body>[^}]*)}/s)?.groups?.body ?? "";
+    const styleValueRule = css.match(/\.lesson-style-row-value\s*{(?<body>[^}]*)}/s)?.groups?.body ?? "";
+    const styleButtonRule = css.match(/\.lesson-style-row\s+\.link-button\s*{(?<body>[^}]*)}/s)?.groups?.body ?? "";
+
+    expect(styleRowRule).toMatch(/display\s*:\s*grid/);
+    expect(styleRowRule).toMatch(/grid-template-columns\s*:\s*minmax\(0,\s*1fr\)\s+max-content/);
+    expect(styleValueRule).toMatch(/flex-wrap\s*:\s*wrap/);
+    expect(styleValueRule).toMatch(/grid-column\s*:\s*1\s*\/\s*-1/);
+    expect(styleValueRule).toMatch(/overflow-wrap\s*:\s*anywhere/);
+    expect(styleButtonRule).toMatch(/grid-column\s*:\s*2/);
+    expect(styleButtonRule).toMatch(/grid-row\s*:\s*1/);
+    expect(styleButtonRule).toMatch(/justify-self\s*:\s*end/);
+    expect(css).toMatch(/@media\s*\(max-width:\s*560px\)[\s\S]*\.lesson-style-row\s*{[\s\S]*grid-template-columns\s*:\s*1fr/);
+    expect(css).toMatch(/@media\s*\(max-width:\s*560px\)[\s\S]*\.lesson-style-row\s+\.link-button\s*{[\s\S]*grid-column\s*:\s*1[\s\S]*grid-row\s*:\s*auto[\s\S]*justify-self\s*:\s*start/);
+  });
 });

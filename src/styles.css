@@ -1470,10 +1470,10 @@ select:focus {
 
 /* Per-unit style row sits between the word preview and the Start buttons.
    It tells the kid which style this unit will draw in and offers a Change
-   action. When no per-unit pick has been made yet, the inline "tap Change to
-   confirm" hint nudges them to confirm before generation starts. */
+   action. */
 .lesson-style-row {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) max-content;
   align-items: center;
   gap: 12px;
   padding: 10px 14px;
@@ -1481,7 +1481,6 @@ select:focus {
   background: linear-gradient(135deg, #f7f3ff 0%, #ecf6ff 100%);
   border: 1px solid #d8d2f0;
   margin: 8px 0 4px;
-  flex-wrap: wrap;
 }
 
 .lesson-style-row-label {
@@ -1493,18 +1492,22 @@ select:focus {
 }
 
 .lesson-style-row-value {
+  grid-column: 1 / -1;
   display: inline-flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 8px;
   font-size: 1rem;
   color: #2a1d57;
-  flex: 1;
   min-width: 0;
+  overflow-wrap: anywhere;
 }
 
-.lesson-style-row-value small {
-  color: #6c628f;
-  font-weight: 600;
+.lesson-style-row .link-button {
+  grid-column: 2;
+  grid-row: 1;
+  justify-self: end;
+  margin-top: 0;
 }
 
 /* Story scenes: while Agnes draws scene N, the inline activity shows a
@@ -2307,6 +2310,17 @@ video {
 
   .lesson-detail-panel {
     padding: 16px;
+  }
+
+  .lesson-style-row {
+    grid-template-columns: 1fr;
+    align-items: start;
+  }
+
+  .lesson-style-row .link-button {
+    grid-column: 1;
+    grid-row: auto;
+    justify-self: start;
   }
 
   .mission-stepper {

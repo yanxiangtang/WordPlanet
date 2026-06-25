@@ -340,6 +340,7 @@ describe("kid lesson board", () => {
     const styleRow = mount.querySelector<HTMLElement>(".lesson-style-row");
     expect(styleRow).not.toBeNull();
     expect(styleRow?.textContent).toContain("Style for this unit");
+    expect(styleRow?.textContent).not.toContain("tap Change to confirm");
 
     const change = Array.from(mount.querySelectorAll<HTMLButtonElement>("button")).find(
       (button) => button.textContent?.trim() === "Change"
