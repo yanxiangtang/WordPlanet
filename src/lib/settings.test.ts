@@ -34,6 +34,14 @@ describe("app settings", () => {
     localStorage.clear();
   });
 
+  it("uses current Agnes model names by default", () => {
+    expect(defaultSettings).toMatchObject({
+      imageModel: "agnes-image-2.1-flash",
+      videoModel: "agnes-video-v2.0",
+      textModel: "agnes-2.0-flash"
+    });
+  });
+
   it("falls back to defaults for missing fields", () => {
     localStorage.setItem(
       "word-planet:settings:v1",

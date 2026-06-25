@@ -24,9 +24,9 @@ describe("Agnes API helpers", () => {
     const request = buildAgnesConnectionTestRequest({
       apiKey: "agnes-key",
       baseUrl: "https://apihub.agnes-ai.com/v1/",
-      imageModel: "agnes-image-2.0-flash",
+      imageModel: "agnes-image-2.1-flash",
       videoModel: "agnes-video-v2.0",
-      textModel: "gpt-4o-mini"
+      textModel: "agnes-2.0-flash"
     });
 
     expect(request.url).toBe("https://apihub.agnes-ai.com/v1/models");
@@ -36,14 +36,14 @@ describe("Agnes API helpers", () => {
 
   it("builds image generation requests with response_format inside extra_body", () => {
     const body = buildImageGenerationRequest({
-      model: "agnes-image-2.0-flash",
+      model: "agnes-image-2.1-flash",
       prompt: "child-safe library image",
       size: "1024x768",
       responseFormat: "b64_json"
     });
 
     expect(body).toEqual({
-      model: "agnes-image-2.0-flash",
+      model: "agnes-image-2.1-flash",
       prompt: "child-safe library image",
       size: "1024x768",
       extra_body: {
@@ -138,12 +138,12 @@ describe("Agnes API helpers", () => {
 
   it("requests JSON object responses from the chat model", () => {
     const body = buildChatCompletionRequest({
-      model: "gpt-4o-mini",
+      model: "agnes-2.0-flash",
       system: "system msg",
       user: "user msg"
     });
 
-    expect(body.model).toBe("gpt-4o-mini");
+    expect(body.model).toBe("agnes-2.0-flash");
     expect(body.response_format).toEqual({ type: "json_object" });
     expect(body.messages).toEqual([
       { role: "system", content: "system msg" },

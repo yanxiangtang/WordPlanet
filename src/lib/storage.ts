@@ -25,9 +25,9 @@ const WORDS_PER_MISSION_OPTIONS = [5, 8, 10];
 export const defaultSettings: AgnesSettings = {
   apiKey: "",
   baseUrl: "https://apihub.agnes-ai.com",
-  imageModel: "agnes-image-2.0-flash",
+  imageModel: "agnes-image-2.1-flash",
   videoModel: "agnes-video-v2.0",
-  textModel: "gpt-4o-mini"
+  textModel: "agnes-2.0-flash"
 };
 
 export const defaultProfile: ChildProfile = {
