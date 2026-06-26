@@ -5,8 +5,8 @@ import { selectMissionWords } from "./data/vocabulary";
 import { buildSampleLessonPack } from "./lib/lesson";
 import { createEmptyMastery, recordMasteryResult } from "./lib/mastery";
 import { defaultParentControlSettings, defaultProfile, defaultSettings, defaultVocabularySelection } from "./lib/storage";
-import App, { Notice, ParentControlScreen, SummaryScreen } from "./App";
-import type { VideoTaskState, VocabularySet } from "./types";
+import App, { canStartRewardPipeline, LessonBoard, Notice, ParentControlScreen, SummaryScreen } from "./App";
+import type { LessonPack, UnitCoverAsset, VideoTaskState, VocabularySet } from "./types";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -14,6 +14,18 @@ import type { VideoTaskState, VocabularySet } from "./types";
 // uses them whenever it hydrates a pack so previews can render. Stub them
 // before any test runs so component renders don't blow up.
 beforeAll(() => {
+  if (!globalThis.localStorage) {
+    const store = new Map<string, string>();
+    Object.defineProperty(globalThis, "localStorage", {
+      value: {
+        getItem: (key: string) => store.get(key) ?? null,
+        setItem: (key: string, value: string) => store.set(key, value),
+        removeItem: (key: string) => store.delete(key),
+        clear: () => store.clear()
+      },
+      configurable: true
+    });
+  }
   if (!URL.createObjectURL) {
     URL.createObjectURL = vi.fn(() => "blob:mock-url");
   }
@@ -35,6 +47,41 @@ const bookUnits = [
 const unitSummaries = {
   1: { hasPack: false, hasVideo: false, hasProgress: false, complete: false }
 };
+
+const SETTINGS_KEY = "word-planet:settings:v1";
+const ONE_PIXEL_B64 = "aQ==";
+
+function deferred<T = void>(): { promise: Promise<T>; resolve: (value: T) => void; reject: (error: unknown) => void } {
+  let resolve!: (value: T) => void;
+  let reject!: (error: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+}
+
+function jsonResponse(body: unknown): Response {
+  return new Response(JSON.stringify(body), {
+    status: 200,
+    headers: { "Content-Type": "application/json" }
+  });
+}
+
+async function flushAsyncWork(ticks = 4): Promise<void> {
+  for (let i = 0; i < ticks; i += 1) await Promise.resolve();
+}
+
+function saveApiSettings() {
+  localStorage.setItem(
+    SETTINGS_KEY,
+    JSON.stringify({
+      ...defaultSettings,
+      apiKey: "agnes-key",
+      baseUrl: "https://agnes.test"
+    })
+  );
+}
 
 function NoticeHarness({ text, dismissible }: { text: string; dismissible: boolean }) {
   const [message, setMessage] = useState(text);
@@ -85,6 +132,61 @@ describe("notice banner", () => {
 
     expect(mount.textContent).toContain("Asking Agnes to generate the reward video...");
     expect(mount.querySelector<HTMLButtonElement>('[aria-label="Dismiss notice"]')).toBeNull();
+  });
+});
+
+describe("lesson generation indication", () => {
+  let root: Root | undefined;
+  let container: HTMLDivElement | undefined;
+
+  afterEach(() => {
+    if (root) {
+      act(() => root?.unmount());
+    }
+    container?.remove();
+    root = undefined;
+    container = undefined;
+  });
+
+  it("uses inline busy state instead of standalone status bars", () => {
+    const words = selectMissionWords("yilin-grade3", "3A", 5);
+    const covers: Record<number, UnitCoverAsset> = {};
+    const mount = document.createElement("div");
+    container = mount;
+    document.body.append(mount);
+    root = createRoot(mount);
+
+    act(() => {
+      root?.render(
+        <LessonBoard
+          units={bookUnits}
+          selection={defaultVocabularySelection}
+          summaries={unitSummaries}
+          covers={covers}
+          words={words}
+          missionReady={false}
+          isGenerating={true}
+          selectedStyleLabel="Dreamy watercolor"
+          selectedStyleEmoji="🌈"
+          onSelectUnit={() => {}}
+          onStart={() => {}}
+          onSample={() => {}}
+          onPickStyle={() => {}}
+          onUnitVisible={() => {}}
+        />
+      );
+    });
+
+    expect(mount.querySelector(".dashboard-notice-row")).toBeNull();
+    expect(mount.querySelector(".setup-status-row")).toBeNull();
+    expect(mount.querySelector(".request-spinner")).toBeNull();
+    expect(mount.querySelector(".inline-busy-status")).toBeNull();
+    expect(mount.textContent).not.toContain("Agnes is generating lesson images");
+
+    const busyButton = mount.querySelector<HTMLButtonElement>(".primary-button.busy-button");
+    expect(busyButton).not.toBeNull();
+    expect(busyButton?.textContent).toContain("Preparing lesson");
+    expect(busyButton?.getAttribute("aria-live")).toBe("polite");
   });
 });
 
@@ -354,6 +456,200 @@ describe("kid lesson board", () => {
 
     const dialog = mount.querySelector<HTMLElement>("[role='dialog']");
     expect(dialog?.textContent).toContain("Style for");
+  });
+});
+
+describe("non-blocking Agnes unit media generation", () => {
+  let root: Root | undefined;
+  let container: HTMLDivElement | undefined;
+  const originalFetch = globalThis.fetch;
+
+  afterEach(() => {
+    if (root) {
+      act(() => root?.unmount());
+    }
+    container?.remove();
+    window.history.replaceState({}, "", "/");
+    localStorage?.clear();
+    vi.restoreAllMocks();
+    globalThis.fetch = originalFetch;
+    root = undefined;
+    container = undefined;
+  });
+
+  function installFetchMock() {
+    const firstWordImage = deferred<Response>();
+    const calls = {
+      wordImages: 0,
+      unitCovers: 0,
+      storyText: 0,
+      storyImages: 0,
+      videos: 0
+    };
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      const body = typeof init?.body === "string" ? JSON.parse(init.body) as { prompt?: string } : {};
+      const prompt = body.prompt ?? "";
+
+      if (prompt.includes("lesson picker card")) {
+        calls.unitCovers += 1;
+        return jsonResponse({ data: [{ b64_json: ONE_PIXEL_B64 }] });
+      }
+      if (prompt.includes("story scene")) {
+        calls.storyImages += 1;
+        return jsonResponse({ data: [{ b64_json: ONE_PIXEL_B64 }] });
+      }
+      if (prompt.includes("picture clue")) {
+        calls.wordImages += 1;
+        if (calls.wordImages === 1) return firstWordImage.promise;
+        return jsonResponse({ data: [{ b64_json: ONE_PIXEL_B64 }] });
+      }
+      if (String(_input).includes("/v1/chat/completions")) {
+        calls.storyText += 1;
+        return jsonResponse({
+          choices: [
+            {
+              message: {
+                content: JSON.stringify({
+                  story: {
+                    text: "Momo waves hello. Momo meets a friend. Momo says goodbye.",
+                    textZh: "Momo 挥手问好。Momo 遇见朋友。Momo 说再见。",
+                    sentences: [
+                      { en: "Momo waves hello.", zh: "Momo 挥手问好。", title: "Hello Wave" },
+                      { en: "Momo meets a friend.", zh: "Momo 遇见朋友。", title: "New Friend" },
+                      { en: "Momo says goodbye.", zh: "Momo 说再见。", title: "Goodbye" }
+                    ]
+                  }
+                })
+              }
+            }
+          ]
+        });
+      }
+      if (String(_input).includes("/v1/videos") || String(_input).includes("/agnesapi")) {
+        calls.videos += 1;
+        return jsonResponse({ video_id: "video-1", status: "queued", progress: 0 });
+      }
+
+      return jsonResponse({ data: [{ b64_json: ONE_PIXEL_B64 }] });
+    });
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+    return { calls, firstWordImage };
+  }
+
+  it("starts a styled Agnes lesson before word images finish and queues the unit cover", async () => {
+    saveApiSettings();
+    const { calls } = installFetchMock();
+    const mount = document.createElement("div");
+    container = mount;
+    document.body.append(mount);
+    root = createRoot(mount);
+
+    await act(async () => {
+      root?.render(<App />);
+      await flushAsyncWork();
+    });
+
+    const start = Array.from(mount.querySelectorAll<HTMLButtonElement>("button")).find((button) =>
+      button.textContent?.includes("Start Lesson")
+    );
+    await act(async () => {
+      start?.click();
+      await flushAsyncWork();
+    });
+
+    const useStyle = Array.from(mount.querySelectorAll<HTMLButtonElement>("button")).find((button) =>
+      button.textContent?.includes("Use this style")
+    );
+    await act(async () => {
+      useStyle?.click();
+      await flushAsyncWork(8);
+    });
+
+    expect(mount.querySelector(".lesson-board")).toBeNull();
+    expect(mount.querySelector(".word-focus-card")).not.toBeNull();
+    expect(calls.wordImages).toBeGreaterThan(0);
+    expect(calls.unitCovers).toBeGreaterThan(0);
+    expect(calls.storyText).toBeGreaterThan(0);
+    expect(calls.storyImages).toBeGreaterThan(0);
+  });
+
+  it("streams completed word images into the already-open lesson", async () => {
+    saveApiSettings();
+    const { firstWordImage } = installFetchMock();
+    const mount = document.createElement("div");
+    container = mount;
+    document.body.append(mount);
+    root = createRoot(mount);
+
+    await act(async () => {
+      root?.render(<App />);
+      await flushAsyncWork();
+    });
+    const start = Array.from(mount.querySelectorAll<HTMLButtonElement>("button")).find((button) =>
+      button.textContent?.includes("Start Lesson")
+    );
+    await act(async () => {
+      start?.click();
+      await flushAsyncWork();
+    });
+    const useStyle = Array.from(mount.querySelectorAll<HTMLButtonElement>("button")).find((button) =>
+      button.textContent?.includes("Use this style")
+    );
+    await act(async () => {
+      useStyle?.click();
+      await flushAsyncWork(8);
+    });
+
+    const initialSrc = mount.querySelector<HTMLImageElement>(".picture-panel img")?.src;
+    expect(initialSrc).toBeTruthy();
+
+    await act(async () => {
+      firstWordImage.resolve(jsonResponse({ data: [{ b64_json: ONE_PIXEL_B64 }] }));
+      await flushAsyncWork(10);
+    });
+
+    expect(mount.querySelector<HTMLImageElement>(".picture-panel img")?.src).not.toBe(initialSrc);
+  });
+});
+
+describe("reward pipeline gating", () => {
+  it("only allows reward video generation after mission completion", () => {
+    const words = selectMissionWords("yilin-grade3", "3A", 5);
+    const pack: LessonPack = buildSampleLessonPack(words, { setId: "yilin-grade3", title: "Book 3A" });
+    const idleVideo: VideoTaskState = { status: "idle", progress: 0 };
+
+    expect(
+      canStartRewardPipeline({
+        screen: "reward",
+        pack,
+        hasApiKey: true,
+        isVideoBusy: false,
+        complete: false,
+        video: idleVideo
+      })
+    ).toBe(false);
+
+    expect(
+      canStartRewardPipeline({
+        screen: "reward",
+        pack,
+        hasApiKey: true,
+        isVideoBusy: false,
+        complete: true,
+        video: idleVideo
+      })
+    ).toBe(true);
+
+    expect(
+      canStartRewardPipeline({
+        screen: "reward",
+        pack,
+        hasApiKey: true,
+        isVideoBusy: false,
+        complete: true,
+        video: { status: "completed", progress: 100, blob: new Blob(["video"], { type: "video/mp4" }) }
+      })
+    ).toBe(false);
   });
 });
 

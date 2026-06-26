@@ -10,7 +10,8 @@ import {
   extractVideoResultUrl,
   imagePromptForWord,
   normalizeAgnesBaseUrl,
-  parseExampleResponse
+  parseExampleResponse,
+  pollAgnesVideo
 } from "./agnes";
 import { selectMissionWords } from "../data/vocabulary";
 
@@ -52,19 +53,75 @@ describe("Agnes API helpers", () => {
     });
   });
 
-  it("builds short video reward requests and extracts the completed video URL", () => {
+  it("builds text-to-video reward requests using Agnes short-video defaults", () => {
     const body = buildVideoTaskRequest({
       model: "agnes-video-v2.0",
+      prompt: "a child-safe library reward scene"
+    });
+
+    expect(body).toEqual({
+      model: "agnes-video-v2.0",
       prompt: "a child-safe library reward scene",
+      num_frames: 121,
+      frame_rate: 24
+    });
+  });
+
+  it("only includes a video seed image when given a public URL", () => {
+    const body = buildVideoTaskRequest({
+      model: "agnes-video-v2.0",
+      prompt: "animate the public reference image",
+      image: "https://example.com/image.png"
+    });
+
+    expect(body.image).toBe("https://example.com/image.png");
+  });
+
+  it("omits local data URI images from video requests", () => {
+    const body = buildVideoTaskRequest({
+      model: "agnes-video-v2.0",
+      prompt: "a text-only reward scene",
       image: "data:image/png;base64,abc"
     });
 
-    expect(body.num_frames).toBe(81);
-    expect(body.frame_rate).toBe(16);
-    expect(body.image).toBe("data:image/png;base64,abc");
+    expect(body).not.toHaveProperty("image");
+  });
+
+  it("extracts the completed video URL from Agnes poll responses", () => {
     expect(extractVideoResultUrl({ status: "completed", remixed_from_video_id: "https://example.com/video.mp4" })).toBe(
       "https://example.com/video.mp4"
     );
+  });
+
+  it("normalizes object-shaped async video poll errors", async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async () =>
+      new Response(
+        JSON.stringify({
+          status: "failed",
+          progress: 10,
+          error: { code: "400", message: "Invalid image: Incorrect padding" }
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      );
+
+    try {
+      const result = await pollAgnesVideo(
+        {
+          apiKey: "agnes-key",
+          baseUrl: "https://apihub.agnes-ai.com",
+          imageModel: "agnes-image-2.1-flash",
+          videoModel: "agnes-video-v2.0",
+          textModel: "agnes-2.0-flash"
+        },
+        "video_123"
+      );
+
+      expect(result.status).toBe("failed");
+      expect(result.error).toBe("Invalid image: Incorrect padding");
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   });
 
   it("asks Agnes for picture clues without readable letters or the target word", () => {

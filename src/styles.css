@@ -345,8 +345,8 @@ input {
 
 .mission-dashboard {
   /* Fill the .main-stage column so .learning-hero inherits the real
-     available height. Flex direction column makes the (optional) notice
-     row sit at natural height while the hero takes everything left. */
+     available height. Flex direction column lets non-busy notices sit at
+     natural height while the hero takes everything left. */
   flex: 1 1 auto;
   min-height: 0;
   display: flex;
@@ -355,18 +355,7 @@ input {
 }
 
 .dashboard-notice-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 12px;
-}
-
-.lesson-picker-shell .dashboard-notice-row {
-  grid-template-columns: minmax(0, 1fr);
-}
-
-.lesson-picker-shell .request-spinner {
-  justify-self: start;
-  max-width: 100%;
+  display: block;
 }
 
 .learning-hero {
@@ -433,18 +422,6 @@ input {
   box-shadow: 0 22px 50px rgba(25, 92, 150, 0.18);
 }
 
-.setup-status-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) max-content;
-  align-items: start;
-  gap: 10px;
-  margin-bottom: 12px;
-}
-
-.setup-status-row .request-spinner {
-  white-space: nowrap;
-}
-
 .setup-back {
   margin-top: 16px;
 }
@@ -463,25 +440,25 @@ input {
 
 .picture-panel {
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
   padding: 0;
   border: 0;
   background: transparent;
   box-shadow: none;
 }
 
-.picture-toolbar {
+.word-progress-toolbar {
+  justify-self: center;
   display: flex;
   align-items: center;
-  gap: 18px;
   min-height: 56px;
-  margin-bottom: 14px;
+  margin-bottom: 8px;
   color: var(--theme-primary);
   font-size: clamp(1.45rem, 2vw, 2.25rem);
   font-weight: 1000;
 }
 
-.picture-toolbar span {
+.word-progress-toolbar span {
   min-width: 122px;
   min-height: 58px;
   display: inline-flex;
@@ -492,6 +469,10 @@ input {
   background: linear-gradient(180deg, #f5fbff, #dcedff);
   border: 1px solid #bcdcff;
   box-shadow: inset 0 -4px 0 rgba(27, 113, 200, 0.08);
+}
+
+.word-nav-button {
+  flex: 0 0 auto;
 }
 
 .picture-panel img {
@@ -506,7 +487,9 @@ input {
 
 .word-focus-card {
   display: grid;
-  place-items: center;
+  grid-template-rows: auto minmax(0, 1fr);
+  align-items: center;
+  justify-items: stretch;
   padding: clamp(22px, 3vw, 46px);
   text-align: center;
   border-radius: 30px;
@@ -728,18 +711,6 @@ input {
   color: #7c4b00;
   background: rgba(255, 255, 255, 0.52);
   box-shadow: none;
-}
-
-.request-spinner {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
-  border-radius: 8px;
-  color: #1e3a8a;
-  background: #e0edff;
-  border: 1px solid #b9d4ff;
-  font-weight: 700;
 }
 
 @keyframes spin {
@@ -1291,6 +1262,12 @@ select:focus {
   box-shadow: 0 14px 28px rgba(239, 79, 147, 0.18);
 }
 
+.lesson-unit-card.busy {
+  border-color: var(--theme-primary);
+  background: #f5f9ff;
+  box-shadow: 0 14px 28px color-mix(in srgb, var(--theme-primary) 16%, transparent);
+}
+
 .lesson-card-cover,
 .lesson-detail-cover {
   min-width: 0;
@@ -1620,6 +1597,7 @@ select:focus {
 }
 
 .word-focus-content {
+  justify-self: center;
   width: min(100%, 560px);
   /* No min-height floor — the content sizes to its parent card, never the
      other way around. A rigid 620px floor would force the card past the
@@ -1854,6 +1832,11 @@ select:focus {
   border-radius: 18px;
   aspect-ratio: 16 / 9;
   object-fit: cover;
+}
+
+.inline-activity.story img {
+  background: linear-gradient(180deg, #f8fbff, #eef7ff);
+  object-fit: contain;
 }
 
 .inline-activity h3 {
@@ -2185,10 +2168,6 @@ video {
     grid-template-columns: 1fr;
   }
 
-  .dashboard-notice-row {
-    grid-template-columns: 1fr;
-  }
-
   .lesson-board {
     padding: 18px;
     border-radius: 22px;
@@ -2334,13 +2313,6 @@ video {
     display: none;
   }
 
-  .setup-status-row {
-    grid-template-columns: 1fr;
-  }
-
-  .setup-status-row .request-spinner {
-    white-space: normal;
-  }
 }
 
 /* ---- Visual style chip + picker ---- */

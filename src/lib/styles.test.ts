@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { pickArtStyle } from "./agnes";
+import { CHILD_ART_STYLES, pickArtStyle } from "./agnes";
 import {
   DEFAULT_STYLE_ID,
   getStyle,
@@ -32,10 +32,51 @@ describe("visual style registry", () => {
     expect(VISUAL_STYLES.length).toBeGreaterThanOrEqual(13);
   });
 
-  it("never names a trademarked character IP directly in a descriptor", () => {
+  it("offers famous-cartoon-inspired choices while keeping surprise-me first", () => {
+    expect(VISUAL_STYLES[0]).toMatchObject({ id: DEFAULT_STYLE_ID, label: "Surprise Me" });
+    expect(VISUAL_STYLES.map((style) => style.label)).toEqual([
+      "Surprise Me",
+      "Sponge Comedy",
+      "Mouse Clubhouse",
+      "Monster Catchers",
+      "Toy Box Adventure",
+      "Princess Musical",
+      "Bluey Family",
+      "Magic School Bus",
+      "Robot Cat",
+      "Turtle Ninjas",
+      "Superhero Squad",
+      "Snow Queen",
+      "Dragon Ball Action",
+      "Pocket Builder"
+    ]);
+  });
+
+  it("uses famous-cartoon-inspired looks for auto rotation too", () => {
+    expect(CHILD_ART_STYLES.length).toBe(VISUAL_STYLES.length - 1);
+    for (const style of VISUAL_STYLES.slice(1)) {
+      expect(CHILD_ART_STYLES).toContain(style.descriptor);
+    }
+  });
+
+  it("never names trademarked character IP directly in a descriptor", () => {
     // Image models refuse named brands; the curated looks evoke the style
     // (cheerful pig family, talking rescue cars) without naming the IP.
-    const blocklist = ["peppa", "cory", "disney", "pokemon", "mario", "spongebob"];
+    const blocklist = [
+      "bluey",
+      "disney",
+      "dragon ball",
+      "doraemon",
+      "frozen",
+      "lego",
+      "mario",
+      "mickey",
+      "peppa",
+      "pixar",
+      "pokemon",
+      "spongebob",
+      "teenage mutant ninja turtles"
+    ];
     for (const style of VISUAL_STYLES) {
       for (const term of blocklist) {
         expect(style.descriptor.toLowerCase()).not.toContain(term);
@@ -46,9 +87,9 @@ describe("visual style registry", () => {
 
 describe("resolveStyleDescriptor", () => {
   it("returns the curated style descriptor when no free-text note is given", () => {
-    const style = getStyle("cartoon-pigs");
+    const style = getStyle("sponge-comedy");
     expect(style).toBeTruthy();
-    expect(resolveStyleDescriptor("cartoon-pigs", undefined, "some-seed")).toBe(style?.descriptor);
+    expect(resolveStyleDescriptor("sponge-comedy", undefined, "some-seed")).toBe(style?.descriptor);
   });
 
   it("delegates to pickArtStyle for the auto style so groups rotate", () => {
@@ -73,8 +114,8 @@ describe("resolveStyleDescriptor", () => {
   });
 
   it("ignores a free-text note that sanitizes to empty and uses the curated descriptor", () => {
-    expect(resolveStyleDescriptor("cartoon-pigs", "   ", "seed")).toBe(getStyle("cartoon-pigs")?.descriptor);
-    expect(resolveStyleDescriptor("cartoon-pigs", "blood violence", "seed")).toBe(getStyle("cartoon-pigs")?.descriptor);
+    expect(resolveStyleDescriptor("sponge-comedy", "   ", "seed")).toBe(getStyle("sponge-comedy")?.descriptor);
+    expect(resolveStyleDescriptor("sponge-comedy", "blood violence", "seed")).toBe(getStyle("sponge-comedy")?.descriptor);
   });
 });
 

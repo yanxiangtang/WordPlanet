@@ -61,7 +61,7 @@ describe("mission stepper layout", () => {
     const wordFocusContentRule =
       css.match(/\.word-focus-content\s*{(?<body>[^}]*)}/s)?.groups?.body ?? "";
 
-    expect(picturePanelRule).toMatch(/grid-template-rows\s*:\s*auto\s+minmax\(0,\s*1fr\)/);
+    expect(picturePanelRule).toMatch(/grid-template-rows\s*:\s*minmax\(0,\s*1fr\)/);
     expect(pictureImageRule).toMatch(/height\s*:\s*100%/);
     expect(pictureImageRule).toMatch(/min-height\s*:\s*0/);
     // Grid items default to min-height: auto, so a tall image or word card
@@ -71,6 +71,16 @@ describe("mission stepper layout", () => {
     // The inner content must not carry a rigid min-height floor — that
     // floor (previously 620px) used to force the word card past the hero.
     expect(wordFocusContentRule).not.toMatch(/min-height\s*:/);
+  });
+
+  it("shows generated story scenes without cropping them", () => {
+    const inlineImageRule = css.match(/\.inline-activity img\s*{(?<body>[^}]*)}/s)?.groups?.body ?? "";
+    const storyImageRule = css.match(/\.inline-activity\.story img\s*{(?<body>[^}]*)}/s)?.groups?.body ?? "";
+
+    // Other inline images can still crop to their frame, but generated story
+    // art has variable proportions and must remain fully visible.
+    expect(inlineImageRule).toMatch(/object-fit\s*:\s*cover/);
+    expect(storyImageRule).toMatch(/object-fit\s*:\s*contain/);
   });
 });
 

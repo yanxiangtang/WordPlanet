@@ -132,6 +132,24 @@ export function buildSampleLessonPack(
   });
 }
 
+export function buildPendingAgnesLessonPack(
+  words: WordEntry[],
+  meta: LessonPackMeta,
+  style: { id: string; note?: string }
+): LessonPack {
+  const base = buildSampleLessonPack(words, meta, style);
+  for (const scene of base.storyScenes) {
+    if (scene.imageUrl) URL.revokeObjectURL(scene.imageUrl);
+  }
+  return {
+    ...base,
+    source: "agnes",
+    unitStyleId: style.id,
+    unitStyleNote: style.note,
+    storyScenes: []
+  };
+}
+
 // Dependencies the Agnes lesson-pack builder needs from its caller. The
 // `imageBlobFetcher` indirection lets the App route every per-word image
 // request through the media scheduler (concurrency cap + retry) while

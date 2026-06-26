@@ -1,9 +1,8 @@
-import { pickArtStyle } from "./agnes";
+import { CHILD_ART_STYLES, pickArtStyle } from "./agnes";
 
-// A kid-selectable visual style for lesson pictures and reward videos. Each
-// curated entry is written to *evoke* a look kids recognize (cheerful pig
-// family, talking rescue vehicles, etc.) without naming any trademarked IP —
-// image models refuse named brands, and we want the prompts to stay portable.
+// A kid-selectable visual style for lesson pictures and reward videos. Labels
+// give kids recognizable famous-cartoon cues; descriptors stay trademark-safe
+// by asking for visual language instead of protected characters or brands.
 export type VisualStyle = {
   id: string;
   // English UI text the kid reads when picking.
@@ -25,102 +24,82 @@ export const VISUAL_STYLES: VisualStyle[] = [
     descriptor: ""
   },
   {
-    id: "cartoon-pigs",
-    label: "Cartoon Pigs",
-    emoji: "🐷",
-    descriptor:
-      "Flat 2D cartoon in the style of a cheerful pig family on green hills, bold clean outlines, bright primary colors, friendly and simple"
+    id: "sponge-comedy",
+    label: "Sponge Comedy",
+    emoji: "🧽",
+    descriptor: CHILD_ART_STYLES[0]
   },
   {
-    id: "race-cars",
-    label: "Race Car Heroes",
-    emoji: "🚗",
-    descriptor:
-      "3D cartoon of friendly talking vehicles and rescue cars with expressive faces, bold colorful, action-adventure for kids"
+    id: "mouse-clubhouse",
+    label: "Mouse Clubhouse",
+    emoji: "🏰",
+    descriptor: CHILD_ART_STYLES[1]
   },
   {
-    id: "storybook",
-    label: "Storybook Watercolor",
-    emoji: "📖",
-    descriptor:
-      "Hand-drawn storybook watercolor illustration, soft pastel colors, cozy and whimsical"
+    id: "monster-catchers",
+    label: "Monster Catchers",
+    emoji: "⚡",
+    descriptor: CHILD_ART_STYLES[2]
   },
   {
-    id: "anime",
-    label: "Anime Cute",
-    emoji: "🌸",
-    descriptor:
-      "Cute Japanese-style anime illustration, big sparkling eyes, playful colorful scenery"
+    id: "toy-box",
+    label: "Toy Box Adventure",
+    emoji: "🧸",
+    descriptor: CHILD_ART_STYLES[3]
   },
   {
-    id: "claymation",
-    label: "Claymation",
-    emoji: "🧱",
-    descriptor:
-      "Claymation plasticine cartoon style, soft sculpted 3D shapes, tactile and fun"
+    id: "princess-musical",
+    label: "Princess Musical",
+    emoji: "👑",
+    descriptor: CHILD_ART_STYLES[4]
   },
   {
-    id: "crayon",
-    label: "Crayon Doodle",
-    emoji: "🖍️",
-    descriptor:
-      "Crayon and colored-pencil children's drawing style, doodle-like, playful hand-made textures"
+    id: "bluey-family",
+    label: "Bluey Family",
+    emoji: "💙",
+    descriptor: CHILD_ART_STYLES[5]
   },
   {
-    id: "kawaii",
-    label: "Kawaii Chibi",
-    emoji: "🥰",
-    descriptor:
-      "Kawaii chibi cartoon style, super cute simplified rounded characters, adorable and friendly"
+    id: "magic-school-bus",
+    label: "Magic School Bus",
+    emoji: "🚌",
+    descriptor: CHILD_ART_STYLES[6]
   },
   {
-    id: "3d-animation",
-    label: "3D Animation",
-    emoji: "🎬",
-    descriptor:
-      "Pixar-style 3D cartoon animation, soft rounded shapes, warm cheerful lighting, expressive characters"
-  },
-  {
-    id: "flat-vector",
-    label: "Flat Vector",
-    emoji: "🟦",
-    descriptor:
-      "Flat 2D vector cartoon illustration, bold clean outlines, bright primary colors, simple shapes"
-  },
-  {
-    id: "comic",
-    label: "Comic Book",
-    emoji: "💥",
-    descriptor:
-      "Cel-shaded comic cartoon style, lively dynamic poses, bright saturated colors"
-  },
-  {
-    id: "pixel",
-    label: "Pixel Art",
-    emoji: "👾",
-    descriptor:
-      "Retro pixel-art cartoon illustration, chunky pixels, bright limited palette, playful and game-like"
-  },
-  {
-    id: "dinosaurs",
-    label: "Dino World",
-    emoji: "🦕",
-    descriptor:
-      "Cute cartoon dinosaurs in a lush prehistoric jungle, friendly smiling dinos, bright adventurous colors"
-  },
-  {
-    id: "robots",
-    label: "Robot Friends",
+    id: "robot-cat",
+    label: "Robot Cat",
     emoji: "🤖",
-    descriptor:
-      "Cute cartoon robots with friendly glowing eyes, rounded bolts and gears, bright futuristic colors"
+    descriptor: CHILD_ART_STYLES[7]
   },
   {
-    id: "space",
-    label: "Space Adventure",
-    emoji: "🚀",
-    descriptor:
-      "Cartoon space adventure, friendly astronauts and rockets among stars and planets, bright cosmic colors"
+    id: "turtle-ninjas",
+    label: "Turtle Ninjas",
+    emoji: "🥷",
+    descriptor: CHILD_ART_STYLES[8]
+  },
+  {
+    id: "superhero-squad",
+    label: "Superhero Squad",
+    emoji: "🦸",
+    descriptor: CHILD_ART_STYLES[9]
+  },
+  {
+    id: "snow-queen",
+    label: "Snow Queen",
+    emoji: "❄️",
+    descriptor: CHILD_ART_STYLES[10]
+  },
+  {
+    id: "dragon-ball-action",
+    label: "Dragon Ball Action",
+    emoji: "🔥",
+    descriptor: CHILD_ART_STYLES[11]
+  },
+  {
+    id: "pocket-builder",
+    label: "Pocket Builder",
+    emoji: "🧱",
+    descriptor: CHILD_ART_STYLES[12]
   }
 ];
 

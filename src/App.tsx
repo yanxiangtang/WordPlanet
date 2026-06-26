@@ -26,11 +26,11 @@ import {
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { getUnitWords, getVocabularySet, listBookUnits, listVocabularySets, selectMissionWords } from "./data/vocabulary";
 import {
-  blobToDataUri,
   buildStoryScenePrompt,
   buildUnitCoverPrompt,
   createAgnesVideoTask,
   fetchAgnesVideoBlob,
+  imagePromptForWord,
   pollAgnesVideo,
   requestAgnesImage,
   requestAgnesStory,
@@ -41,7 +41,7 @@ import {
   videoRewardPromptFromStory
 } from "./lib/agnes";
 import {
-  buildAgnesLessonPack,
+  buildPendingAgnesLessonPack,
   buildSampleLessonPack,
   collectObjectUrls,
   getWordImage,
@@ -99,6 +99,28 @@ type UnitLessonSummary = {
   complete: boolean;
 };
 
+function needsRewardVideoState(video: VideoTaskState): boolean {
+  return video.status === "idle" || video.status === "failed" || (video.status === "completed" && !video.url && !video.blob);
+}
+
+export function canStartRewardPipeline({
+  screen,
+  pack,
+  hasApiKey,
+  isVideoBusy,
+  complete,
+  video
+}: {
+  screen: Screen;
+  pack: LessonPack | null;
+  hasApiKey: boolean;
+  isVideoBusy: boolean;
+  complete: boolean;
+  video: VideoTaskState;
+}): boolean {
+  return screen === "reward" && Boolean(pack) && hasApiKey && !isVideoBusy && complete && needsRewardVideoState(video);
+}
+
 function readScreenFromUrl(): Screen | null {
   if (typeof window === "undefined") return null;
   const page = new URLSearchParams(window.location.search).get("page");
@@ -113,7 +135,7 @@ function writeScreenToUrl(screen: Screen): void {
 }
 
 function isOngoingNoticeText(text: string): boolean {
-  return /^(Loading|Asking|Downloading|Redrawing)/.test(text);
+  return /^(Loading|Asking|Downloading|Redrawing|Writing|Drawing|Almost ready)/.test(text);
 }
 
 // Wait a fixed number of milliseconds; used to pace the parent-side video
@@ -202,6 +224,14 @@ function App() {
   const unitCoverUrlsRef = useRef<string[]>([]);
   const videoUrlRef = useRef<string | null>(null);
   const videoPollRef = useRef<{ cancelled: boolean } | null>(null);
+  const activeUnitKeyRef = useRef(activeUnitKey);
+  const unitMediaRunRef = useRef<string | null>(null);
+  const startAfterStylePickRef = useRef<Screen | null>(null);
+  const storySceneGenerationRef = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    activeUnitKeyRef.current = activeUnitKey;
+  }, [activeUnitKey]);
 
   function replacePackUrls(nextPack: LessonPack | null) {
     for (const url of objectUrlsRef.current) URL.revokeObjectURL(url);
@@ -243,6 +273,15 @@ function App() {
     videoPollRef.current = null;
   }
 
+  function isCurrentMediaRun(unitKey: string, runId: string): boolean {
+    return unitMediaRunRef.current === `${unitKey}:${runId}` && activeUnitKeyRef.current === unitKey;
+  }
+
+  function cancelUnitMediaJobs(unitKey: string) {
+    scheduler.cancelAll(({ id }) => id.includes(`:${unitKey}:`) || id.endsWith(`:${unitKey}`));
+    if (unitMediaRunRef.current?.startsWith(`${unitKey}:`)) unitMediaRunRef.current = null;
+  }
+
   async function loadUnitState(nextSelection: VocabularySelection, restorePage: boolean) {
     const key = unitStorageKey(nextSelection);
     const words = selectMissionWords(
@@ -259,7 +298,7 @@ function App() {
     // don't race the freshly hydrated state.
     const previousKey = activeUnitKey;
     if (previousKey && previousKey !== key) {
-      scheduler.cancelAll(({ id }) => id.includes(`:${previousKey}:`) || id.endsWith(`:${previousKey}`));
+      cancelUnitMediaJobs(previousKey);
     }
     replacePackUrls(null);
     replaceVideoUrl(null);
@@ -527,7 +566,7 @@ function App() {
   // A style pick that would throw away already-generated Agnes media must be
   // confirmed before regenerating (regen costs API credits). When set, the
   // ConfirmStyleChange modal is shown; null means no confirmation pending.
-  const [pendingStyle, setPendingStyle] = useState<{ id: string; note?: string; label: string } | null>(null);
+  const [pendingStyle, setPendingStyle] = useState<{ id: string; descriptor: string; note?: string; label: string } | null>(null);
   const [stylePickerOpen, setStylePickerOpen] = useState(false);
 
   // A short celebratory overlay shown when the kid finishes an activity before
@@ -624,24 +663,208 @@ function App() {
     await refreshUnitSummaries();
   }
 
-  async function startMission(forceSample = false, nextScreen: Screen = "home"): Promise<LessonPack | null> {
+  function makeMediaRunId(): string {
+    return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+  }
+
+  function selectedStyleFromPick(id: string, note?: string): { id: string; descriptor: string; note?: string } {
+    return { id, descriptor: resolveStyleDescriptor(id, note, missionSeed), note };
+  }
+
+  function replaceWordAssetFromBackground(unitKey: string, runId: string, wordId: string, imageBlob: Blob) {
+    setPack((prev) => {
+      if (!prev || !isCurrentMediaRun(unitKey, runId)) return prev;
+      const existing = prev.assets.find((asset) => asset.wordId === wordId);
+      if (!existing) return prev;
+      if (existing.imageUrl) {
+        URL.revokeObjectURL(existing.imageUrl);
+        objectUrlsRef.current = objectUrlsRef.current.filter((url) => url !== existing.imageUrl);
+      }
+      const imageUrl = URL.createObjectURL(imageBlob);
+      objectUrlsRef.current.push(imageUrl);
+      const nextPack: LessonPack = {
+        ...prev,
+        assets: prev.assets.map((asset) =>
+          asset.wordId === wordId ? { ...asset, imageBlob, imageUrl, source: "agnes" } : asset
+        )
+      };
+      void storage.saveLesson(nextPack, unitKey);
+      return nextPack;
+    });
+  }
+
+  function saveStoryOnCurrentPack(unitKey: string, runId: string, story: StoryText) {
+    setPack((prev) => {
+      if (!prev || !isCurrentMediaRun(unitKey, runId)) return prev;
+      const nextPack: LessonPack = { ...prev, storyText: story };
+      void storage.saveLesson(nextPack, unitKey);
+      return nextPack;
+    });
+  }
+
+  async function generateUnitCoverForStyle(
+    targetSelection: VocabularySelection,
+    style: { id: string; descriptor: string; note?: string },
+    unitKey: string,
+    runId: string
+  ) {
+    const unit = listBookUnits(targetSelection.setId, targetSelection.bookId).find((item) => item.unitNumber === targetSelection.unitNumber);
+    if (!unit) return;
+    const coverKey = unitCoverStorageKey(targetSelection);
+    const criteria = { promptVersion: UNIT_COVER_PROMPT_VERSION, artStyleId: style.id, artStyleNote: style.note };
+    try {
+      const cached = await storage.getUnitCover(coverKey);
+      if (isUnitCoverFresh(cached, criteria)) {
+        if (!isCurrentMediaRun(unitKey, runId)) return;
+        upsertUnitCover({ ...cached, imageUrl: URL.createObjectURL(cached.imageBlob) });
+        return;
+      }
+    } catch {
+      // Fall through and generate a fresh cover.
+    }
+
+    try {
+      const words = getUnitWords(targetSelection.setId, targetSelection.bookId, targetSelection.unitNumber);
+      const imageBlob = await scheduler.enqueue({
+        id: `unitCover:${coverKey}:${runId}`,
+        kind: "unitCover",
+        priority: 1,
+        run: (signal) =>
+          requestAgnesImage(settings, buildUnitCoverPrompt(unit, words, style.descriptor), { signal })
+      });
+      if (!isCurrentMediaRun(unitKey, runId)) return;
+      const nextCover: UnitCoverAsset = {
+        setId: targetSelection.setId,
+        bookId: targetSelection.bookId,
+        unitNumber: targetSelection.unitNumber,
+        promptVersion: UNIT_COVER_PROMPT_VERSION,
+        artStyleId: style.id,
+        artStyleNote: style.note,
+        imageBlob,
+        imageUrl: URL.createObjectURL(imageBlob),
+        source: "agnes",
+        createdAt: Date.now()
+      };
+      await storage.saveUnitCover(nextCover, coverKey);
+      if (isCurrentMediaRun(unitKey, runId)) upsertUnitCover(nextCover);
+    } catch {
+      // Covers are decorative; failed generation should not interrupt play.
+    }
+  }
+
+  async function generateStoryMediaForPack(
+    targetPack: LessonPack,
+    style: { id: string; descriptor: string; note?: string },
+    unitKey: string,
+    runId: string
+  ) {
+    const storyKey = `${unitKey}:${targetPack.id}:${style.id}:${style.note ?? ""}`;
+    if (storySceneGenerationRef.current.has(storyKey)) return;
+    storySceneGenerationRef.current.add(storyKey);
+    try {
+      let story = targetPack.storyText;
+      if (!story) {
+        story = await scheduler.enqueue({
+          id: `storyText:${unitKey}:${runId}`,
+          kind: "storyText",
+          run: (signal) =>
+            requestAgnesStory(
+              settings,
+              targetPack.words.map((word) => ({ word: word.word, meaningZh: word.meaningZh })),
+              { signal }
+            )
+        });
+        if (!isCurrentMediaRun(unitKey, runId)) return;
+        story = { ...story, generatedAt: Date.now(), promptVersion: STORY_TEXT_PROMPT_VERSION };
+        saveStoryOnCurrentPack(unitKey, runId, story);
+      }
+
+      for (let i = 0; i < story.sentences.length; i += 1) {
+        const sentence = story.sentences[i];
+        try {
+          const blob = await scheduler.enqueue({
+            id: `storyImage:${unitKey}:${i}:${runId}`,
+            kind: "storyImage",
+            run: (signal) =>
+              requestAgnesImage(
+                settings,
+                buildStoryScenePrompt(sentence, style.descriptor, targetPack.words),
+                { signal }
+              )
+          });
+          if (!isCurrentMediaRun(unitKey, runId)) return;
+          setPack((prev) => {
+            if (!prev || !isCurrentMediaRun(unitKey, runId)) return prev;
+            const nextScene = {
+              id: `story-${i + 1}`,
+              title: sentence.title,
+              text: sentence.en,
+              textZh: sentence.zh,
+              imageBlob: blob,
+              imageUrl: URL.createObjectURL(blob),
+              source: "agnes" as const
+            };
+            const nextPack = upsertStoryScene(prev, nextScene);
+            objectUrlsRef.current.push(nextScene.imageUrl);
+            void storage.saveLesson(nextPack, unitKey);
+            return nextPack;
+          });
+        } catch {
+          // A single scene failure leaves that slot as a Story placeholder.
+        }
+      }
+    } catch {
+      // Story text failure leaves Story placeholders in place.
+    } finally {
+      storySceneGenerationRef.current.delete(storyKey);
+    }
+  }
+
+  function startBackgroundUnitMedia(
+    targetPack: LessonPack,
+    targetSelection: VocabularySelection,
+    style: { id: string; descriptor: string; note?: string },
+    unitKey: string,
+    runId: string
+  ) {
+    void generateUnitCoverForStyle(targetSelection, style, unitKey, runId);
+    for (const word of targetPack.words) {
+      void scheduler.enqueue({
+        id: `lessonImage:${unitKey}:${word.id}:${runId}`,
+        kind: "lessonImage",
+        run: (signal) => requestAgnesImage(settings, imagePromptForWord(word, style.descriptor), { signal })
+      })
+        .then((blob) => replaceWordAssetFromBackground(unitKey, runId, word.id, blob))
+        .catch(() => {
+          // Keep the placeholder image for this word.
+        });
+    }
+    void generateStoryMediaForPack(targetPack, style, unitKey, runId);
+  }
+
+  async function startMission(
+    forceSample = false,
+    nextScreen: Screen = "home",
+    styleOverride: { id: string; descriptor: string; note?: string } = visualStyle
+  ): Promise<LessonPack | null> {
     if (isGenerating) return null;
     setGenerating(true);
     cancelVideoPoll();
-    setNotice(forceSample || !hasApiKey ? "Loading the built-in sample mission." : "Asking Agnes to generate your lesson images.");
+    setNotice(forceSample || !hasApiKey ? "Loading the built-in sample mission." : "Preparing your lesson while pictures draw.");
     try {
-      const nextPack =
-        hasApiKey && !forceSample
-          ? await buildAgnesLessonPack(missionWords, settings, lessonMeta, visualStyle, {
-              imageBlobFetcher: (prompt, _index, word) =>
-                scheduler.enqueue({
-                  id: `lessonImage:${activeUnitKey}:${word.id}`,
-                  kind: "lessonImage",
-                  run: (signal) => requestAgnesImage(settings, prompt, { signal })
-                })
-            })
-          : buildSampleLessonPack(missionWords, lessonMeta, { id: visualStyle.id, note: visualStyle.note });
+      const unitKey = activeUnitKey;
+      const targetSelection = selection;
+      let runId = "";
+      if (hasApiKey && !forceSample) {
+        cancelUnitMediaJobs(unitKey);
+        runId = makeMediaRunId();
+        unitMediaRunRef.current = `${unitKey}:${runId}`;
+      }
+      const nextPack = hasApiKey && !forceSample
+        ? buildPendingAgnesLessonPack(missionWords, lessonMeta, { id: styleOverride.id, note: styleOverride.note })
+        : buildSampleLessonPack(missionWords, lessonMeta, { id: styleOverride.id, note: styleOverride.note });
       const nextMastery = createEmptyMastery(nextPack.words.map((word) => word.id));
+      storyEnsureRef.current = null;
       replacePackUrls(nextPack);
       replaceVideoUrl(null);
       setPack(nextPack);
@@ -655,15 +878,13 @@ function App() {
         storage.saveVideo({ status: "idle", progress: 0 }, activeUnitKey)
       ]);
       await refreshUnitSummaries();
-      setNotice(nextPack.source === "agnes" ? "Agnes lesson pack saved in this browser." : "Sample mission saved in this browser.");
+      if (nextPack.source === "agnes") {
+        startBackgroundUnitMedia(nextPack, targetSelection, styleOverride, unitKey, runId);
+      }
+      setNotice(nextPack.source === "agnes" ? "Lesson ready. Pictures are drawing in the background." : "Sample mission saved in this browser.");
       return nextPack;
     } catch (error) {
-      // Pack-level failures now only happen if the lesson-images batch fully
-      // collapses (e.g. caller forced sample + sample pack rejected). The
-      // scheduler retries transient image errors and the builder swaps in
-      // sample SVGs for any individual word that still fails — so the kid
-      // keeps the words that did generate.
-      const fallback = buildSampleLessonPack(missionWords, lessonMeta, { id: visualStyle.id, note: visualStyle.note });
+      const fallback = buildSampleLessonPack(missionWords, lessonMeta, { id: styleOverride.id, note: styleOverride.note });
       replacePackUrls(fallback);
       setPack(fallback);
       setMastery(createEmptyMastery(fallback.words.map((word) => word.id)));
@@ -682,29 +903,31 @@ function App() {
   // resetting mastery — the kid keeps their Story/Game/Spelling progress. Used
   // by the style-change "Redraw now" confirmation. Mirrors the generation shape
   // of startMission but preserves activeIndex/mastery.
-  async function regeneratePictures() {
+  async function regeneratePictures(styleOverride: { id: string; descriptor: string; note?: string } = visualStyle) {
     if (isGenerating) return;
     if (!hasApiKey) return;
     setGenerating(true);
     setNotice("Redrawing your pictures in the new style.");
-    // Cancel any in-flight image/story/video jobs for this unit so the new
-    // style isn't racing the old one.
-    scheduler.cancelAll(({ id }) => id.includes(`:${activeUnitKey}:`) || id.endsWith(`:${activeUnitKey}`));
+    const unitKey = activeUnitKey;
+    const targetSelection = selection;
+    cancelUnitMediaJobs(unitKey);
+    cancelVideoPoll();
+    const idleVideo: VideoTaskState = { status: "idle", progress: 0 };
+    replaceVideoUrl(null);
+    setVideo(idleVideo);
+    void storage.saveVideo(idleVideo, unitKey);
     try {
-      const nextPack = await buildAgnesLessonPack(missionWords, settings, lessonMeta, visualStyle, {
-        imageBlobFetcher: (prompt, _index, word) =>
-          scheduler.enqueue({
-            id: `lessonImage:${activeUnitKey}:${word.id}:${Date.now()}`,
-            kind: "lessonImage",
-            run: (signal) => requestAgnesImage(settings, prompt, { signal })
-          })
-      });
+      const runId = makeMediaRunId();
+      unitMediaRunRef.current = `${unitKey}:${runId}`;
+      const nextPack = buildPendingAgnesLessonPack(missionWords, lessonMeta, { id: styleOverride.id, note: styleOverride.note });
+      storyEnsureRef.current = null;
       replacePackUrls(nextPack);
       setPack(nextPack);
       setActiveIndex((value) => Math.min(value, Math.max(nextPack.words.length - 1, 0)));
       await storage.saveLesson(nextPack, activeUnitKey);
       await refreshUnitSummaries();
-      setNotice("Pictures redrawn in your new style.");
+      startBackgroundUnitMedia(nextPack, targetSelection, styleOverride, unitKey, runId);
+      setNotice("Pictures are redrawing in your new style.");
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "Could not redraw pictures.");
     } finally {
@@ -720,6 +943,9 @@ function App() {
     const label = getStyle(id)?.label ?? "Surprise Me";
     const styleChanged = id !== (currentUnitPick?.styleId ?? profile.visualStyleId ?? DEFAULT_STYLE_ID) ||
       (note ?? "") !== (currentUnitPick?.styleNote ?? profile.visualStyleNote ?? "");
+    const selectedStyle = selectedStyleFromPick(id, note);
+    const startAfterPick = startAfterStylePickRef.current;
+    startAfterStylePickRef.current = null;
     const pick: UnitStylePick = { styleId: id, styleNote: note, chosenAt: Date.now() };
     setUnitStylePicks((current) => ({ ...current, [activeUnitKey]: pick }));
     try {
@@ -729,10 +955,14 @@ function App() {
       // generation for this session.
     }
     setStylePickerOpen(false);
-    if (!styleChanged) return;
+    if (!styleChanged && !startAfterPick) return;
     const hasGeneratedMedia = pack?.source === "agnes" || (video.status === "completed" && Boolean(video.blob || video.url));
     if (hasGeneratedMedia && hasApiKey) {
-      setPendingStyle({ id, note, label });
+      setPendingStyle({ ...selectedStyle, label });
+    } else if (hasApiKey && (!pack || startAfterPick)) {
+      await startMission(false, startAfterPick ?? "home", selectedStyle);
+    } else if (hasApiKey && styleChanged) {
+      await regeneratePictures(selectedStyle);
     } else {
       setNotice(`Style set to ${label}. The next start of this unit will use it.`);
     }
@@ -799,6 +1029,10 @@ function App() {
 
   async function startVideoReward() {
     if (!pack) return;
+    if (!complete) {
+      setNotice("Finish the meaning and spelling stages before creating the reward video.");
+      return;
+    }
     if (!hasApiKey) {
       setVideo({
         status: "completed",
@@ -811,10 +1045,6 @@ function App() {
     // Manual retry button — runs the same pipeline as the reward-screen
     // auto-trigger.
     await runRewardPipeline(pack);
-  }
-
-  function needsRewardVideo(): boolean {
-    return video.status === "idle" || video.status === "failed" || (video.status === "completed" && !video.url && !video.blob);
   }
 
   // Reward pipeline: write a kid-friendly story with the text LLM, then
@@ -869,16 +1099,13 @@ function App() {
       // ----- 2. Create video task -----
       setVideo({ status: "running", stage: "creating-task", progress: 25 });
       setNotice("Asking Agnes to draw your reward video…");
-      const seedDataUri = targetPack.assets[0]?.imageBlob
-        ? await blobToDataUri(targetPack.assets[0].imageBlob)
-        : undefined;
       const prompt = story
         ? videoRewardPromptFromStory(story, visualStyle.descriptor)
         : videoRewardPrompt(targetPack, visualStyle.descriptor);
       const task = await scheduler.enqueue({
         id: `rewardVideo:${unitKey}:create`,
         kind: "rewardVideo",
-        run: (signal) => createAgnesVideoTask(settings, prompt, seedDataUri, { signal })
+        run: (signal) => createAgnesVideoTask(settings, prompt, undefined, { signal })
       });
       if (token.cancelled) return;
 
@@ -957,6 +1184,9 @@ function App() {
     if (targetPack.storyScenes.length > 0 && targetPack.storyScenes.every((scene) => scene.source === "agnes")) return;
 
     const unitKey = activeUnitKey;
+    const storyKey = `${unitKey}:${targetPack.id}:${visualStyle.id}:${visualStyle.note ?? ""}`;
+    if (storySceneGenerationRef.current.has(storyKey)) return;
+    storySceneGenerationRef.current.add(storyKey);
     try {
       let story = targetPack.storyText;
       if (!story) {
@@ -1018,6 +1248,8 @@ function App() {
     } catch {
       // Story-text failure — leave scenes empty; the screen shows a
       // friendly fallback.
+    } finally {
+      storySceneGenerationRef.current.delete(storyKey);
     }
   }
 
@@ -1025,6 +1257,7 @@ function App() {
     if (!pack && hasApiKey && !hasUnitStylePick) {
       // Force a per-unit style pick before spending image credits.
       setNotice("Pick a style for this unit, then we'll start generating.");
+      startAfterStylePickRef.current = "learn";
       setStylePickerOpen(true);
       return;
     }
@@ -1054,21 +1287,19 @@ function App() {
   // Reward auto-trigger: when the kid reaches the reward screen and we
   // don't already have a usable video, run the story → video pipeline.
   useEffect(() => {
-    if (screen !== "reward") return;
-    if (!pack) return;
-    if (!hasApiKey) return;
-    if (isVideoBusy) return;
-    if (!needsRewardVideo()) return;
-    void runRewardPipeline(pack);
+    if (!canStartRewardPipeline({ screen, pack, hasApiKey, isVideoBusy, complete, video })) return;
+    void runRewardPipeline(pack as LessonPack);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pack, screen]);
+  }, [complete, pack, screen, video.status, video.blob, video.url]);
 
   async function chooseLessonUnit(unitNumber: number) {
     await switchToUnit({ ...selection, unitNumber }, true);
   }
 
   const isLessonPicker = screen === "home";
-  const noticeDismissible = Boolean(notice) && !isGenerating && !isVideoBusy && !isOngoingNoticeText(notice);
+  const busy = isGenerating || isVideoBusy;
+  const visibleNotice = notice && !busy && !isOngoingNoticeText(notice) ? notice : "";
+  const noticeDismissible = Boolean(visibleNotice);
 
   return (
     <div className={`app-shell theme-${profile.gender} ${isLessonPicker ? "lesson-picker-shell" : ""}`}>
@@ -1084,10 +1315,7 @@ function App() {
       <main className="main-stage">
         {screen === "setup" ? (
           <section className="setup-panel">
-            <div className="setup-status-row">
-              <Notice text={notice} dismissible={noticeDismissible} onDismiss={() => setNotice("")} />
-              {isGenerating && <RequestSpinner label="Working on your mission…" />}
-            </div>
+            {visibleNotice && <Notice text={visibleNotice} dismissible={noticeDismissible} onDismiss={() => setNotice("")} />}
             <ParentControlScreen
               settings={settings}
               profile={profile}
@@ -1131,7 +1359,7 @@ function App() {
             complete={complete}
             isGenerating={isGenerating}
             missionReady={missionReady}
-            notice={notice}
+            notice={visibleNotice}
             noticeDismissible={noticeDismissible}
             onDismissNotice={() => setNotice("")}
             celebration={celebration}
@@ -1187,7 +1415,7 @@ function App() {
           }}
           onRedraw={() => {
             setPendingStyle(null);
-            void regeneratePictures();
+            void regeneratePictures(pendingStyle);
           }}
         />
       )}
@@ -1295,13 +1523,12 @@ function MissionDashboard({
   onUnitVisible: (unit: VocabularyUnit) => void;
 }) {
   const showLessonBoard = screen === "home";
-  const showNoticeRow = Boolean(notice) || isGenerating;
+  const showNoticeRow = Boolean(notice);
   return (
     <section className="mission-dashboard" aria-label="Word Planet mission dashboard">
       {showNoticeRow && (
         <div className="dashboard-notice-row">
           <Notice text={notice} dismissible={noticeDismissible} onDismiss={onDismissNotice} />
-          {isGenerating && <RequestSpinner label="Working on your mission…" />}
         </div>
       )}
 
@@ -1340,18 +1567,15 @@ function MissionDashboard({
           {screen === "learn" && (
             <div className="learning-hero">
               <section className="picture-panel">
-                <div className="picture-toolbar">
-                  <button className="icon-button" onClick={onBackWord} disabled={activeIndex === 0} aria-label="Previous word">
-                    <ChevronLeft />
-                  </button>
-                  <span>{activeIndex + 1} / {pack.words.length}</span>
-                </div>
                 <img src={getWordImage(pack, activeWord.id)} alt={`${activeWord.word} illustration`} />
               </section>
 
               <CurrentWordPanel
                 word={activeWord}
                 settings={settings}
+                activeIndex={activeIndex}
+                totalWords={pack.words.length}
+                onBack={onBackWord}
                 onNext={onNextWord}
                 onMarkMeaning={onMarkMeaning}
                 onSay={onSay}
@@ -1405,7 +1629,7 @@ function compactUnitStatusLabel(summary?: UnitLessonSummary): string {
   return "New";
 }
 
-function LessonBoard({
+export function LessonBoard({
   units,
   selection,
   summaries,
@@ -1464,6 +1688,7 @@ function LessonBoard({
               selected={selected}
               hasCover={hasCover}
               coverUrl={covers[unit.unitNumber]?.imageUrl}
+              busy={isGenerating && selected}
               onSelect={() => onSelectUnit(unit.unitNumber)}
               onVisible={() => onUnitVisible(unit)}
             />
@@ -1513,10 +1738,12 @@ function LessonBoard({
               if (!isGenerating) onStart();
             }}
             aria-disabled={isGenerating}
+            aria-live={isGenerating ? "polite" : undefined}
             data-busy={isGenerating ? "true" : undefined}
           >
-            {missionReady ? "Resume Lesson" : isGenerating ? "Starting..." : "Start Lesson"}
-            <ArrowRight size={18} />
+            {isGenerating && <Loader2 className="spin" size={18} />}
+            {missionReady ? "Resume Lesson" : isGenerating ? "Preparing lesson" : "Start Lesson"}
+            {!isGenerating && <ArrowRight size={18} />}
           </button>
           <button
             className={`secondary-button ${isGenerating ? "busy-button" : ""}`}
@@ -1546,6 +1773,7 @@ function UnitCard({
   selected,
   hasCover,
   coverUrl,
+  busy,
   onSelect,
   onVisible
 }: {
@@ -1554,6 +1782,7 @@ function UnitCard({
   selected: boolean;
   hasCover: boolean;
   coverUrl?: string;
+  busy?: boolean;
   onSelect: () => void;
   onVisible: () => void;
 }) {
@@ -1590,7 +1819,7 @@ function UnitCard({
   return (
     <button
       ref={buttonRef}
-      className={`lesson-unit-card ${selected ? "selected" : ""}`}
+      className={`lesson-unit-card ${selected ? "selected" : ""} ${busy ? "busy" : ""}`}
       type="button"
       aria-label={`Unit ${unit.unitNumber}: ${unit.title}. ${unit.wordCount} words. ${unitStatusLabel(summary)}. ${
         summary?.hasPack ? "Pictures saved" : "Pictures needed"
@@ -1607,7 +1836,7 @@ function UnitCard({
       <span className="lesson-card-top">
         <span className="lesson-unit-number">Unit {unit.unitNumber}</span>
         <span className={`lesson-status ${unitStatusLabel(summary).toLowerCase().replace(" ", "-")}`}>
-          {compactUnitStatusLabel(summary)}
+          {busy ? "Generating" : compactUnitStatusLabel(summary)}
         </span>
       </span>
       <strong>{unit.title}</strong>
@@ -1621,6 +1850,9 @@ function UnitCard({
 function CurrentWordPanel({
   word,
   settings,
+  activeIndex,
+  totalWords,
+  onBack,
   onNext,
   onMarkMeaning,
   onSay,
@@ -1628,6 +1860,9 @@ function CurrentWordPanel({
 }: {
   word: WordEntry;
   settings: AgnesSettings;
+  activeIndex: number;
+  totalWords: number;
+  onBack: () => void;
   onNext: () => void;
   onMarkMeaning: () => void;
   onSay: () => void;
@@ -1635,6 +1870,9 @@ function CurrentWordPanel({
 }) {
   return (
     <section className="word-focus-card">
+      <div className="word-progress-toolbar">
+        <span>{activeIndex + 1} / {totalWords}</span>
+      </div>
       <div className="word-focus-content">
         <span className="new-badge">
           <Star size={20} fill="currentColor" />
@@ -1669,6 +1907,9 @@ function CurrentWordPanel({
             </div>
           )}
           <div className="button-row centered">
+            <button className="icon-button word-nav-button" onClick={onBack} disabled={activeIndex === 0} aria-label="Previous word">
+              <ChevronLeft />
+            </button>
             <button className="secondary-button" onClick={onMarkMeaning}>
               I know it
             </button>
@@ -1876,7 +2117,7 @@ function RewardInline({
       {video.url ? (
         <video controls src={video.url} />
       ) : (
-        <div className="video-placeholder">
+        <div className="video-placeholder" role={inFlight ? "status" : undefined} aria-live={inFlight ? "polite" : undefined}>
           {inFlight ? <Loader2 className="spin" size={48} /> : <Play size={58} />}
           <span>{video.error ?? stageCopy}</span>
           {inFlight && video.progress > 0 && (
@@ -2114,15 +2355,6 @@ export function Notice({
           <X size={16} />
         </button>
       )}
-    </div>
-  );
-}
-
-function RequestSpinner({ label }: { label: string }) {
-  return (
-    <div className="request-spinner" role="status" aria-live="polite">
-      <Loader2 size={18} className="spin" />
-      <span>{label}</span>
     </div>
   );
 }

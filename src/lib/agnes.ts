@@ -18,6 +18,7 @@ export type ImageGenerationParams = {
 export type VideoTaskParams = {
   model: string;
   prompt: string;
+  // Agnes Video V2.0 accepts only publicly accessible image URLs here.
   image?: string;
 };
 
@@ -69,12 +70,13 @@ export function buildImageGenerationRequest(params: ImageGenerationParams) {
 }
 
 export function buildVideoTaskRequest(params: VideoTaskParams) {
+  const image = params.image && /^https?:\/\//i.test(params.image) ? params.image : undefined;
   return {
     model: params.model,
     prompt: params.prompt,
-    ...(params.image ? { image: params.image } : {}),
-    num_frames: 81,
-    frame_rate: 16
+    ...(image ? { image } : {}),
+    num_frames: 121,
+    frame_rate: 24
   };
 }
 
@@ -86,18 +88,30 @@ export function extractVideoResultUrl(result: Record<string, unknown>): string |
   return typeof remixed === "string" ? remixed : typeof url === "string" ? url : undefined;
 }
 
-// Child-friendly cartoon / animation art styles. No photorealistic or realistic
-// looks — every style is illustrated, playful, and loved by kids. Each practice
-// group can rotate to a different style for visual variety.
+export function extractAgnesErrorMessage(error: unknown): string | undefined {
+  if (typeof error === "string") return error;
+  if (!error || typeof error !== "object") return undefined;
+  const message = (error as { message?: unknown }).message;
+  return typeof message === "string" ? message : undefined;
+}
+
+// Child-friendly cartoon / animation art styles inspired by famous kids'
+// cartoons. Descriptors avoid direct trademarked names so the image prompt
+// asks for a visual language, not a protected character or brand.
 export const CHILD_ART_STYLES: string[] = [
-  "Pixar-style 3D cartoon animation, soft rounded shapes, warm cheerful lighting, expressive characters",
-  "Flat 2D vector cartoon illustration, bold clean outlines, bright primary colors, simple shapes",
-  "Hand-drawn storybook watercolor illustration, soft pastel colors, cozy and whimsical",
-  "Cute Japanese-style anime illustration, big sparkling eyes, playful colorful scenery",
-  "Crayon and colored-pencil children's drawing style, doodle-like, playful hand-made textures",
-  "Claymation plasticine cartoon style, soft sculpted 3D shapes, tactile and fun",
-  "Kawaii chibi cartoon style, super cute simplified rounded characters, adorable and friendly",
-  "Cel-shaded comic cartoon style, lively dynamic poses, bright saturated colors"
+  "Bright underwater sponge-comedy cartoon look, simple rounded sea-life shapes, clean bold outlines, tropical candy colors, goofy expressive faces",
+  "Classic mouse-clubhouse preschool cartoon look, polished 3D rounded characters, cheerful primary colors, friendly stage-like sets",
+  "Monster-catching anime adventure look, energetic poses, sparkling effects, cute collectible creature silhouettes, crisp colorful backgrounds",
+  "Toy-box 3D adventure animation look, warm cinematic lighting, plastic toy textures, expressive rounded characters, playful room-scale scenes",
+  "Musical fairy-tale princess animation look, elegant storybook shapes, glowing palace colors, soft magical lighting, expressive theatrical poses",
+  "Gentle blue-dog family cartoon look, flat 2D shapes, warm suburban home colors, soft outlines, playful everyday comedy",
+  "Educational magic field-trip cartoon look, bright science-classroom colors, friendly bus adventure energy, clear illustrated shapes",
+  "Rounded robot-cat manga cartoon look, clean simple lines, bright gadgets, cheerful futuristic props, cute expressive faces",
+  "Action turtle-team Saturday-morning cartoon look, bold comic outlines, neon city colors, dynamic martial-arts poses, playful heroic energy",
+  "Superhero-team animated comic look, capes and masks, bright city skyline colors, clean cel shading, brave kid-friendly action",
+  "Snow-queen musical animation look, icy crystal colors, soft 3D fairy-tale lighting, graceful expressive characters, magical winter sparkle",
+  "High-energy martial-arts anime look, spiky motion shapes, glowing power effects, dramatic clouds, bold saturated action colors",
+  "Blocky brick-builder cartoon look, toy construction shapes, bright modular worlds, cheerful adventure colors, clean plastic textures"
 ];
 
 // Deterministically pick an art style from a seed string so the same practice
@@ -387,7 +401,7 @@ export async function pollAgnesVideo(
     status: videoUrl ? "completed" : status === "failed" ? "failed" : "running",
     progress: typeof payload.progress === "number" ? payload.progress : videoUrl ? 100 : 30,
     url: videoUrl,
-    error: typeof payload.error === "string" ? payload.error : undefined
+    error: extractAgnesErrorMessage(payload.error)
   };
 }
 

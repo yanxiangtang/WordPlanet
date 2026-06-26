@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { getBookWords, selectMissionWords } from "../data/vocabulary";
-import { buildAgnesLessonPack, buildSampleLessonPack, mergeWordsWithExamples, TEXT_FREE_ASSET_VERSION } from "./lesson";
+import {
+  buildAgnesLessonPack,
+  buildPendingAgnesLessonPack,
+  buildSampleLessonPack,
+  mergeWordsWithExamples,
+  TEXT_FREE_ASSET_VERSION
+} from "./lesson";
 import type { AgnesSettings, WordEntry } from "../types";
 
 const META = { setId: "yilin-grade3", title: "译林版三年级上册" };
@@ -55,6 +61,24 @@ describe("lesson pack generation", () => {
 
     expect(pack.artStyleId).toBe("cartoon-pigs");
     expect(pack.artStyleNote).toBe("dancing pigs");
+  });
+
+  it("builds an immediately playable pending Agnes pack with placeholder pictures", () => {
+    const words = selectMissionWords("yilin-grade3", "3A", 5);
+    const pack = buildPendingAgnesLessonPack(words, META, { id: "sponge-comedy", note: "soft colors" });
+
+    expect(pack.source).toBe("agnes");
+    expect(pack.words).toEqual(words);
+    expect(pack.assets).toHaveLength(words.length);
+    expect(pack.assets.every((asset) => asset.source === "sample")).toBe(true);
+    expect(pack.assets.every((asset) => asset.imageBlob.type === "image/svg+xml")).toBe(true);
+    expect(pack.assets.every((asset) => asset.imageUrl.length > 0)).toBe(true);
+    expect(pack.storyScenes).toEqual([]);
+    expect(pack.artStyleId).toBe("sponge-comedy");
+    expect(pack.artStyleNote).toBe("soft colors");
+    expect(pack.unitStyleId).toBe("sponge-comedy");
+    expect(pack.unitStyleNote).toBe("soft colors");
+    expect(pack.assetPromptVersion).toBe(TEXT_FREE_ASSET_VERSION);
   });
 
   it("hydrates word entries with generated example sentences when the chat model returns them in order", () => {
