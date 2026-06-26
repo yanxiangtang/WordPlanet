@@ -1,4 +1,12 @@
-import type { MasteryLane, MissionMastery, WordMastery } from "../types";
+import type { MasteryLane, MissionMastery, WordEntry, WordMastery } from "../types";
+
+export type PracticeGap = {
+  lane: "meaning" | "write";
+  label: "Meaning" | "Spelling";
+  completed: number;
+  total: number;
+  missingWords: string[];
+};
 
 function emptyLane() {
   return { correct: 0, wrong: 0, completed: false };
@@ -52,3 +60,23 @@ export function laneProgress(mastery: MissionMastery, lane: MasteryLane): { comp
   };
 }
 
+export function rewardPracticeGaps(mastery: MissionMastery, words: WordEntry[]): PracticeGap[] {
+  const requiredStages: Pick<PracticeGap, "lane" | "label">[] = [
+    { lane: "meaning", label: "Meaning" },
+    { lane: "write", label: "Spelling" }
+  ];
+
+  return requiredStages.map(({ lane, label }) => {
+    const missingWords = words
+      .filter((word) => !mastery[word.id]?.[lane].completed)
+      .map((word) => word.word);
+
+    return {
+      lane,
+      label,
+      completed: words.length - missingWords.length,
+      total: words.length,
+      missingWords
+    };
+  }).filter((gap) => gap.missingWords.length > 0);
+}

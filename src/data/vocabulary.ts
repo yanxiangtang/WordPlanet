@@ -149,6 +149,6 @@ export function getUnitWords(setId: string, bookId: string, unitNumber: number):
 }
 
 export function selectMissionWords(setId: string, bookId: string, count: number, unitNumber?: number): WordEntry[] {
-  const source = typeof unitNumber === "number" ? getUnitWords(setId, bookId, unitNumber) : getBookWords(setId, bookId);
-  return source.slice(0, count);
+  if (typeof unitNumber === "number") return getUnitWords(setId, bookId, unitNumber);
+  return getBookWords(setId, bookId).slice(0, count);
 }

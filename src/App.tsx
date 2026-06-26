@@ -50,7 +50,14 @@ import {
   withObjectUrls
 } from "./lib/lesson";
 import { getMediaScheduler } from "./lib/mediaScheduler";
-import { createEmptyMastery, isMissionComplete, laneProgress, recordMasteryResult } from "./lib/mastery";
+import {
+  createEmptyMastery,
+  isMissionComplete,
+  laneProgress,
+  recordMasteryResult,
+  rewardPracticeGaps,
+  type PracticeGap
+} from "./lib/mastery";
 import { listenForWord, speak, speechRecognitionSupported } from "./lib/speech";
 import { buildShuffledLetterTiles } from "./lib/spelling";
 import { DEFAULT_STYLE_ID, getStyle, resolveStyleDescriptor, VISUAL_STYLES, type VisualStyle } from "./lib/styles";
@@ -98,6 +105,27 @@ type UnitLessonSummary = {
   hasProgress: boolean;
   complete: boolean;
 };
+
+type SpellingFeedback = {
+  kind: "correct" | "retry";
+  attempt: string;
+  word: string;
+};
+
+function lessonPackMatchesWords(pack: LessonPack | undefined, words: WordEntry[]): pack is LessonPack {
+  return Boolean(
+    pack &&
+      pack.words.length === words.length &&
+      pack.words.every((word, index) => word.id === words[index]?.id)
+  );
+}
+
+function masteryMatchesWords(mastery: MissionMastery | undefined, words: WordEntry[]): mastery is MissionMastery {
+  if (!mastery) return false;
+  const expectedIds = new Set(words.map((word) => word.id));
+  const savedIds = Object.keys(mastery);
+  return savedIds.length === expectedIds.size && savedIds.every((id) => expectedIds.has(id));
+}
 
 function needsRewardVideoState(video: VideoTaskState): boolean {
   return video.status === "idle" || video.status === "failed" || (video.status === "completed" && !video.url && !video.blob);
@@ -213,6 +241,8 @@ function App() {
       : "Sample mission is ready. Add an Agnes key when you want generated images and video."
   );
   const [spellInput, setSpellInput] = useState("");
+  const [spellFeedback, setSpellFeedback] = useState<SpellingFeedback | null>(null);
+  const [spellShuffleSeed, setSpellShuffleSeed] = useState(0);
   const [speechMessage, setSpeechMessage] = useState("");
   const [isVideoBusy, setIsVideoBusy] = useState(false);
 
@@ -316,12 +346,16 @@ function App() {
         storage.getLearningPageState(key)
       ]);
 
-      if (storedPack?.assetPromptVersion === TEXT_FREE_ASSET_VERSION) {
+      const storedPackIsCurrent =
+        storedPack?.assetPromptVersion === TEXT_FREE_ASSET_VERSION && lessonPackMatchesWords(storedPack, words);
+      if (storedPackIsCurrent) {
         const hydrated = withObjectUrls(storedPack);
         replacePackUrls(hydrated);
         setPack(hydrated);
+      } else if (storedPack) {
+        void storage.deleteLesson(key);
       }
-      if (storedMastery) setMastery(storedMastery);
+      if (masteryMatchesWords(storedMastery, words)) setMastery(storedMastery);
       if (storedVideo) {
         if (storedVideo.blob) {
           const objUrl = URL.createObjectURL(storedVideo.blob);
@@ -358,15 +392,19 @@ function App() {
             storage.getMastery(key),
             storage.getVideo(key)
           ]);
+          const words = getUnitWords(targetSelection.setId, targetSelection.bookId, unit.unitNumber);
+          const hasCurrentPack =
+            storedPack?.assetPromptVersion === TEXT_FREE_ASSET_VERSION && lessonPackMatchesWords(storedPack, words);
+          const hasCurrentMastery = masteryMatchesWords(storedMastery, words);
           return [
             unit.unitNumber,
             {
-              hasPack: Boolean(storedPack),
+              hasPack: hasCurrentPack,
               hasVideo: storedVideo?.status === "completed" && Boolean(storedVideo.blob || storedVideo.url),
-              hasProgress: Boolean(storedMastery && Object.values(storedMastery).some((word) =>
+              hasProgress: Boolean(hasCurrentMastery && Object.values(storedMastery).some((word) =>
                 Object.values(word).some((lane) => lane.correct > 0 || lane.wrong > 0 || lane.completed)
               )),
-              complete: storedMastery ? isMissionComplete(storedMastery) : false
+              complete: hasCurrentMastery ? isMissionComplete(storedMastery) : false
             }
           ] as const;
         } catch {
@@ -384,6 +422,12 @@ function App() {
   const dashboardPack = pack ?? buildSampleLessonPack(missionWords, lessonMeta);
   const missionReady = Boolean(pack);
   const complete = useMemo(() => isMissionComplete(mastery), [mastery]);
+
+  useEffect(() => {
+    setSpellFeedback(null);
+    setSpellShuffleSeed(0);
+  }, [activeWord.id]);
+
   const hasApiKey = settings.apiKey.trim().length > 0;
   const currentUnitSummary = useMemo<UnitLessonSummary>(
     () => ({
@@ -752,6 +796,52 @@ function App() {
     }
   }
 
+  async function refreshUnitCoverForStyle(
+    targetSelection: VocabularySelection,
+    style: { id: string; descriptor: string; note?: string }
+  ) {
+    const unit = listBookUnits(targetSelection.setId, targetSelection.bookId).find((item) => item.unitNumber === targetSelection.unitNumber);
+    if (!unit) return;
+    const coverKey = unitCoverStorageKey(targetSelection);
+    const criteria = { promptVersion: UNIT_COVER_PROMPT_VERSION, artStyleId: style.id, artStyleNote: style.note };
+    try {
+      const cached = await storage.getUnitCover(coverKey);
+      if (isUnitCoverFresh(cached, criteria)) {
+        upsertUnitCover({ ...cached, imageUrl: URL.createObjectURL(cached.imageBlob) });
+        return;
+      }
+    } catch {
+      // Fall through and generate a fresh cover.
+    }
+
+    try {
+      const words = getUnitWords(targetSelection.setId, targetSelection.bookId, targetSelection.unitNumber);
+      const imageBlob = await scheduler.enqueue({
+        id: `unitCover:${coverKey}:${style.id}:${style.note ?? ""}`,
+        kind: "unitCover",
+        priority: 1,
+        run: (signal) =>
+          requestAgnesImage(settings, buildUnitCoverPrompt(unit, words, style.descriptor), { signal })
+      });
+      const nextCover: UnitCoverAsset = {
+        setId: targetSelection.setId,
+        bookId: targetSelection.bookId,
+        unitNumber: targetSelection.unitNumber,
+        promptVersion: UNIT_COVER_PROMPT_VERSION,
+        artStyleId: style.id,
+        artStyleNote: style.note,
+        imageBlob,
+        imageUrl: URL.createObjectURL(imageBlob),
+        source: "agnes",
+        createdAt: Date.now()
+      };
+      await storage.saveUnitCover(nextCover, coverKey);
+      upsertUnitCover(nextCover);
+    } catch {
+      // Unit covers are decorative; failed generation should not block style selection.
+    }
+  }
+
   async function generateStoryMediaForPack(
     targetPack: LessonPack,
     style: { id: string; descriptor: string; note?: string },
@@ -959,8 +1049,11 @@ function App() {
     const hasGeneratedMedia = pack?.source === "agnes" || (video.status === "completed" && Boolean(video.blob || video.url));
     if (hasGeneratedMedia && hasApiKey) {
       setPendingStyle({ ...selectedStyle, label });
-    } else if (hasApiKey && (!pack || startAfterPick)) {
-      await startMission(false, startAfterPick ?? "home", selectedStyle);
+    } else if (hasApiKey && startAfterPick) {
+      await startMission(false, startAfterPick, selectedStyle);
+    } else if (hasApiKey && !pack) {
+      await refreshUnitCoverForStyle(selection, selectedStyle);
+      setNotice(`Style set to ${label}. The cover is updating for this unit.`);
     } else if (hasApiKey && styleChanged) {
       await regeneratePictures(selectedStyle);
     } else {
@@ -1021,9 +1114,11 @@ function App() {
   }
 
   async function handleSpell(word: WordEntry) {
-    const correct = spellInput.trim().toLowerCase() === word.word.toLowerCase();
+    const attempt = spellInput.trim();
+    const correct = attempt.toLowerCase() === word.word.toLowerCase();
     await mark(word, "write", correct);
-    setSpellInput("");
+    setSpellFeedback({ kind: correct ? "correct" : "retry", attempt, word: word.word });
+    setSpellShuffleSeed((value) => value + 1);
     setNotice(correct ? `Great spelling: ${word.word}!` : `Good try. The word is ${word.word}.`);
   }
 
@@ -1306,10 +1401,7 @@ function App() {
       <TopBar
         profile={profile}
         missionTitle={missionTitle}
-        styleEmoji={unitStyleEmoji}
-        styleLabel={unitStyleLabel}
         compact={isLessonPicker}
-        onPickStyle={() => setStylePickerOpen(true)}
         onSetup={() => setScreen("setup")}
       />
       <main className="main-stage">
@@ -1355,6 +1447,8 @@ function App() {
             activeWord={activeWord}
             screen={screen}
             spellInput={spellInput}
+            spellFeedback={spellFeedback}
+            spellShuffleSeed={spellShuffleSeed}
             speechMessage={speechMessage}
             complete={complete}
             isGenerating={isGenerating}
@@ -1436,6 +1530,8 @@ function MissionDashboard({
   activeWord,
   screen,
   spellInput,
+  spellFeedback,
+  spellShuffleSeed,
   speechMessage,
   complete,
   isGenerating,
@@ -1485,6 +1581,8 @@ function MissionDashboard({
   activeWord: WordEntry;
   screen: Screen;
   spellInput: string;
+  spellFeedback: SpellingFeedback | null;
+  spellShuffleSeed: number;
   speechMessage: string;
   complete: boolean;
   isGenerating: boolean;
@@ -1593,6 +1691,8 @@ function MissionDashboard({
                   word={activeWord}
                   settings={settings}
                   spellInput={spellInput}
+                  feedback={spellFeedback}
+                  shuffleSeed={spellShuffleSeed}
                   onInput={onInput}
                   onCheck={onCheckSpell}
                   onContinue={onSpellContinue}
@@ -1601,6 +1701,7 @@ function MissionDashboard({
               {screen === "reward" && (
                 <RewardInline
                   complete={complete}
+                  gaps={rewardPracticeGaps(mastery, pack.words)}
                   video={video}
                   onCreate={onCreateVideo}
                   onSummary={onRewardSummary}
@@ -1726,9 +1827,11 @@ export function LessonBoard({
             <span aria-hidden="true">{selectedStyleEmoji}</span>
             <strong>{selectedStyleLabel}</strong>
           </span>
-          <button className="link-button" type="button" onClick={onPickStyle}>
-            Change
-          </button>
+          {!isGenerating && (
+            <button className="link-button" type="button" onClick={onPickStyle}>
+              Change
+            </button>
+          )}
         </div>
         <div className="button-row">
           <button
@@ -2027,6 +2130,8 @@ function SpellingInline({
   word,
   settings,
   spellInput,
+  feedback,
+  shuffleSeed,
   onInput,
   onCheck,
   onContinue
@@ -2034,17 +2139,23 @@ function SpellingInline({
   word: WordEntry;
   settings: AgnesSettings;
   spellInput: string;
+  feedback: SpellingFeedback | null;
+  shuffleSeed: number;
   onInput: (value: string) => void;
   onCheck: () => void;
   onContinue: () => void;
 }) {
-  const tiles = useMemo(() => buildShuffledLetterTiles(word.word), [word.word]);
+  const tiles = useMemo(() => buildShuffledLetterTiles(word.word, shuffleSeed), [shuffleSeed, word.word]);
   const [selectedTiles, setSelectedTiles] = useState<string[]>([]);
 
   useEffect(() => {
     setSelectedTiles([]);
     onInput("");
   }, [onInput, word.id]);
+
+  useEffect(() => {
+    setSelectedTiles([]);
+  }, [shuffleSeed]);
 
   function selectTile(tileId: string, letter: string) {
     if (selectedTiles.includes(tileId) || spellInput.length >= word.word.length) return;
@@ -2086,6 +2197,22 @@ function SpellingInline({
             </button>
           ))}
         </div>
+        {feedback && (
+          <div className={`spell-feedback ${feedback.kind}`} role="status" aria-live="polite">
+            <strong>{feedback.kind === "correct" ? `Great spelling: ${feedback.word}!` : "Try again"}</strong>
+            {feedback.kind === "retry" ? (
+              <>
+                <span>Your answer: {feedback.attempt || "(blank)"}</span>
+                <span>The word is {feedback.word}.</span>
+                <button className="secondary-button" type="button" onClick={clearAnswer}>
+                  Try again
+                </button>
+              </>
+            ) : (
+              <span>Your answer: {feedback.attempt}</span>
+            )}
+          </div>
+        )}
         <div className="button-row spelling-actions">
           <button className="primary-button" onClick={onCheck}>Check</button>
           <button className="secondary-button" onClick={clearAnswer} type="button">Clear</button>
@@ -2101,11 +2228,13 @@ function SpellingInline({
 
 function RewardInline({
   complete,
+  gaps,
   video,
   onCreate,
   onSummary
 }: {
   complete: boolean;
+  gaps: PracticeGap[];
   video: VideoTaskState;
   onCreate: () => void;
   onSummary: () => void;
@@ -2123,6 +2252,16 @@ function RewardInline({
           {inFlight && video.progress > 0 && (
             <progress className="video-progress" max={100} value={video.progress} aria-label="Reward video progress" />
           )}
+        </div>
+      )}
+      {!complete && gaps.length > 0 && (
+        <div className="reward-gap-panel">
+          <strong>Finish the missing practice below to unlock the video.</strong>
+          {gaps.map((gap) => (
+            <span key={gap.lane}>
+              {gap.label} {gap.completed}/{gap.total}: {gap.missingWords.join(", ")}
+            </span>
+          ))}
         </div>
       )}
       <div className="button-row centered">
@@ -2154,7 +2293,7 @@ function rewardStageCopy(video: VideoTaskState, complete: boolean): string {
     case "downloading":
       return "📥 Almost ready — downloading…";
     default:
-      return complete ? "Video status: ready" : "Practice is still open";
+      return complete ? "Video status: ready" : "Finish the missing practice below to unlock the video.";
   }
 }
 
@@ -2282,18 +2421,12 @@ function MissionStepper({
 function TopBar({
   profile,
   missionTitle,
-  styleEmoji,
-  styleLabel,
   compact,
-  onPickStyle,
   onSetup
 }: {
   profile: ChildProfile;
   missionTitle: string;
-  styleEmoji: string;
-  styleLabel: string;
   compact: boolean;
-  onPickStyle: () => void;
   onSetup: () => void;
 }) {
   return (
@@ -2313,11 +2446,6 @@ function TopBar({
       <div className="top-actions">
         {!compact && (
           <>
-            <button className="style-chip" onClick={onPickStyle} aria-label={`Visual style: ${styleLabel}. Tap to change.`}>
-              <span className="style-chip-emoji">{styleEmoji}</span>
-              <span className="style-chip-label">{styleLabel}</span>
-              <Sparkles size={15} />
-            </button>
             <span className="star-pill">
               <Star size={19} fill="currentColor" /> 120
             </span>
@@ -2796,20 +2924,7 @@ export function ParentControlScreen({
             );
           })}
         </div>
-        <label>
-          Words per mission
-          <select
-            value={selection.wordsPerMission}
-            onChange={(event) => onSelection({ ...selection, wordsPerMission: Number(event.target.value) })}
-          >
-            {[5, 8, 10].map((count) => (
-              <option key={count} value={count}>
-                {count}
-              </option>
-            ))}
-          </select>
-        </label>
-        <p className="fine-print">Changing the set or book starts a fresh mission word list.</p>
+        <p className="fine-print">Changing the set, book, or unit starts a fresh mission word list.</p>
       </section>
 
       <section className="setup-card">

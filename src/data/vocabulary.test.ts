@@ -54,12 +54,12 @@ describe("JSON vocabulary sets", () => {
     ]);
   });
 
-  it("selects mission words from a specific unit", () => {
+  it("selects all mission words from a specific unit", () => {
     const unitWords = getUnitWords("yilin-grade3", "3A", 2);
     const words = selectMissionWords("yilin-grade3", "3A", 5, 2);
 
     expect(unitWords.map((word) => word.word)).toEqual(["are", "you", "yes", "am", "no", "not", "Goodbye."]);
-    expect(words).toEqual(unitWords.slice(0, 5));
+    expect(words).toEqual(unitWords);
     expect(words[0].id).toBe("yilin-grade3-3A-u2-are");
   });
 

@@ -4,7 +4,7 @@ import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { selectMissionWords } from "./data/vocabulary";
 import { buildSampleLessonPack } from "./lib/lesson";
 import { createEmptyMastery, recordMasteryResult } from "./lib/mastery";
-import { defaultParentControlSettings, defaultProfile, defaultSettings, defaultVocabularySelection } from "./lib/storage";
+import { defaultParentControlSettings, defaultProfile, defaultSettings, defaultVocabularySelection, storage } from "./lib/storage";
 import App, { canStartRewardPipeline, LessonBoard, Notice, ParentControlScreen, SummaryScreen } from "./App";
 import type { LessonPack, UnitCoverAsset, VideoTaskState, VocabularySet } from "./types";
 
@@ -320,6 +320,74 @@ describe("mission dock navigation", () => {
   });
 });
 
+describe("interactive spelling practice", () => {
+  let root: Root | undefined;
+  let container: HTMLDivElement | undefined;
+
+  afterEach(() => {
+    if (root) {
+      act(() => root?.unmount());
+    }
+    container?.remove();
+    window.history.replaceState({}, "", "/");
+    localStorage?.clear();
+    root = undefined;
+    container = undefined;
+  });
+
+  it("keeps a wrong answer visible, shows feedback, and reshuffles tiles", async () => {
+    const mount = document.createElement("div");
+    container = mount;
+    document.body.append(mount);
+    root = createRoot(mount);
+
+    await act(async () => {
+      root?.render(<App />);
+      await Promise.resolve();
+    });
+
+    const sample = Array.from(mount.querySelectorAll<HTMLButtonElement>("button")).find((button) =>
+      button.textContent?.includes("Use Sample Mission")
+    );
+    await act(async () => {
+      sample?.click();
+      await Promise.resolve();
+    });
+
+    const spellStep = Array.from(mount.querySelectorAll<HTMLButtonElement>(".mission-stepper-item")).find((button) =>
+      button.textContent?.includes("Spell")
+    );
+    await act(async () => {
+      spellStep?.click();
+      await Promise.resolve();
+    });
+
+    const originalButtons = Array.from(mount.querySelectorAll<HTMLButtonElement>(".letter-bank button"));
+    const originalTiles = originalButtons.map((button) => button.textContent).join("");
+    const partialAttempt = originalButtons[0]?.textContent ?? "";
+
+    await act(async () => {
+      originalButtons[0]?.click();
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      Array.from(mount.querySelectorAll<HTMLButtonElement>("button"))
+        .find((button) => button.textContent?.trim() === "Check")
+        ?.click();
+      await Promise.resolve();
+    });
+
+    const reshuffledTiles = Array.from(mount.querySelectorAll<HTMLButtonElement>(".letter-bank button"))
+      .map((button) => button.textContent)
+      .join("");
+
+    expect(mount.querySelector<HTMLInputElement>(".spell-input")?.value).toBe(partialAttempt);
+    expect(mount.querySelector(".spell-feedback")?.textContent).toContain("Try again");
+    expect(reshuffledTiles).not.toBe(originalTiles);
+  });
+});
+
 describe("kid lesson board", () => {
   let root: Root | undefined;
   let container: HTMLDivElement | undefined;
@@ -457,6 +525,118 @@ describe("kid lesson board", () => {
     const dialog = mount.querySelector<HTMLElement>("[role='dialog']");
     expect(dialog?.textContent).toContain("Style for");
   });
+
+  it("does not expose style changes from the header during a lesson", async () => {
+    const mount = document.createElement("div");
+    container = mount;
+    document.body.append(mount);
+    root = createRoot(mount);
+
+    await act(async () => {
+      root?.render(<App />);
+      await Promise.resolve();
+    });
+
+    const sample = Array.from(mount.querySelectorAll<HTMLButtonElement>("button")).find((button) =>
+      button.textContent?.includes("Use Sample Mission")
+    );
+
+    await act(async () => {
+      sample?.click();
+      await Promise.resolve();
+    });
+
+    expect(mount.querySelector(".lesson-board")).toBeNull();
+    expect(mount.querySelector(".style-chip")).toBeNull();
+    expect(mount.querySelector("[role='dialog']")).toBeNull();
+  });
+
+  it("allows changing unit style after the unit has started", () => {
+    const words = selectMissionWords("yilin-grade3", "3A", 5);
+    const covers: Record<number, UnitCoverAsset> = {};
+    let pickedStyle = false;
+    const mount = document.createElement("div");
+    container = mount;
+    document.body.append(mount);
+    root = createRoot(mount);
+
+    act(() => {
+      root?.render(
+        <LessonBoard
+          units={bookUnits}
+          selection={defaultVocabularySelection}
+          summaries={unitSummaries}
+          covers={covers}
+          words={words}
+          missionReady={true}
+          isGenerating={false}
+          selectedStyleLabel="Dreamy watercolor"
+          selectedStyleEmoji="🌈"
+          onSelectUnit={() => {}}
+          onStart={() => {}}
+          onSample={() => {}}
+          onPickStyle={() => {
+            pickedStyle = true;
+          }}
+          onUnitVisible={() => {}}
+        />
+      );
+    });
+
+    const styleRow = mount.querySelector<HTMLElement>(".lesson-style-row");
+    expect(styleRow).not.toBeNull();
+    expect(styleRow?.textContent).toContain("Style for this unit");
+    const change = Array.from(mount.querySelectorAll<HTMLButtonElement>("button")).find(
+      (button) => button.textContent?.trim() === "Change"
+    );
+    expect(change).toBeTruthy();
+
+    act(() => change?.click());
+
+    expect(pickedStyle).toBe(true);
+  });
+});
+
+describe("stale lesson caches", () => {
+  let root: Root | undefined;
+  let container: HTMLDivElement | undefined;
+
+  afterEach(() => {
+    if (root) {
+      act(() => root?.unmount());
+    }
+    container?.remove();
+    window.history.replaceState({}, "", "/");
+    localStorage?.clear();
+    vi.restoreAllMocks();
+    root = undefined;
+    container = undefined;
+  });
+
+  it("ignores saved lesson packs whose words no longer match the selected unit", async () => {
+    const staleWords = selectMissionWords("yilin-grade3", "3A", 5);
+    const stalePack = buildSampleLessonPack(staleWords, { setId: "yilin-grade3-3A-unit-1", title: "Book 3A · Unit 1" });
+    vi.spyOn(storage, "getLesson").mockResolvedValue(stalePack);
+    vi.spyOn(storage, "getMastery").mockResolvedValue(undefined);
+    vi.spyOn(storage, "getVideo").mockResolvedValue(undefined);
+    vi.spyOn(storage, "getLearningPageState").mockResolvedValue(undefined);
+    vi.spyOn(storage, "getUnitCover").mockResolvedValue(undefined);
+    vi.spyOn(storage, "getUnitStyle").mockResolvedValue(undefined);
+
+    const mount = document.createElement("div");
+    container = mount;
+    document.body.append(mount);
+    root = createRoot(mount);
+
+    await act(async () => {
+      root?.render(<App />);
+      await flushAsyncWork(8);
+    });
+
+    expect(mount.querySelector<HTMLElement>(".lesson-detail-panel")?.textContent).toContain("8 mission words");
+    expect(mount.textContent).toContain("Start Lesson");
+    expect(mount.textContent).not.toContain("Resume Lesson");
+  });
 });
 
 describe("non-blocking Agnes unit media generation", () => {
@@ -472,6 +652,7 @@ describe("non-blocking Agnes unit media generation", () => {
     window.history.replaceState({}, "", "/");
     localStorage?.clear();
     vi.restoreAllMocks();
+    vi.unstubAllGlobals();
     globalThis.fetch = originalFetch;
     root = undefined;
     container = undefined;
@@ -610,6 +791,56 @@ describe("non-blocking Agnes unit media generation", () => {
 
     expect(mount.querySelector<HTMLImageElement>(".picture-panel img")?.src).not.toBe(initialSrc);
   });
+
+  it("requests a fresh selected unit cover after changing style before start", async () => {
+    saveApiSettings();
+    const { calls } = installFetchMock();
+    let objectUrlIndex = 0;
+    vi.spyOn(URL, "createObjectURL").mockImplementation(() => {
+      objectUrlIndex += 1;
+      return `blob:style-cover-${objectUrlIndex}`;
+    });
+    const mount = document.createElement("div");
+    container = mount;
+    document.body.append(mount);
+    root = createRoot(mount);
+
+    await act(async () => {
+      root?.render(<App />);
+      await flushAsyncWork(20);
+    });
+    const coverCallsBeforeStyleChange = calls.unitCovers;
+
+    const change = Array.from(mount.querySelectorAll<HTMLButtonElement>("button")).find(
+      (button) => button.textContent?.trim() === "Change"
+    );
+    await act(async () => {
+      change?.click();
+      await flushAsyncWork();
+    });
+
+    const spongeStyle = Array.from(mount.querySelectorAll<HTMLButtonElement>(".style-card")).find((button) =>
+      button.textContent?.includes("Sponge Comedy")
+    );
+    await act(async () => {
+      spongeStyle?.click();
+      await flushAsyncWork();
+    });
+
+    const useStyle = Array.from(mount.querySelectorAll<HTMLButtonElement>("button")).find((button) =>
+      button.textContent?.includes("Use this style")
+    );
+    await act(async () => {
+      useStyle?.click();
+      await flushAsyncWork(8);
+    });
+
+    expect(mount.querySelector(".lesson-board")).not.toBeNull();
+    expect(mount.textContent).toContain("Start Lesson");
+    expect(mount.textContent).not.toContain("Resume Lesson");
+    expect(calls.unitCovers).toBeGreaterThan(coverCallsBeforeStyleChange);
+    expect(mount.querySelector<HTMLImageElement>(".lesson-unit-card.selected .lesson-card-cover img")?.src).toBeTruthy();
+  });
 });
 
 describe("reward pipeline gating", () => {
@@ -664,6 +895,44 @@ describe("parent cached media controls", () => {
     container?.remove();
     root = undefined;
     container = undefined;
+  });
+
+  it("uses unit selection without exposing a words-per-mission control", () => {
+    const mount = document.createElement("div");
+    container = mount;
+    document.body.append(mount);
+    root = createRoot(mount);
+
+    act(() => {
+      root?.render(
+        <ParentControlScreen
+          settings={defaultSettings}
+          profile={defaultProfile}
+          parentControls={defaultParentControlSettings}
+          selection={defaultVocabularySelection}
+          vocabularySets={vocabularySets}
+          bookUnits={bookUnits}
+          unitSummaries={unitSummaries}
+          unlocked={true}
+          pack={null}
+          video={{ status: "idle", progress: 0 }}
+          onSettings={() => {}}
+          onProfile={() => {}}
+          onParentControls={() => {}}
+          onSelection={() => {}}
+          onUnlock={() => {}}
+          onDeletePictures={() => {}}
+          onDeleteVideo={() => {}}
+          isVideoBusy={false}
+        />
+      );
+    });
+
+    expect(mount.textContent).toContain("Vocabulary");
+    expect(mount.textContent).toContain("Vocabulary set");
+    expect(mount.textContent).toContain("Book");
+    expect(mount.textContent).toContain("Unit 1");
+    expect(mount.textContent).not.toContain("Words per mission");
   });
 
   it("opens cached pictures and videos directly from their previews", () => {
