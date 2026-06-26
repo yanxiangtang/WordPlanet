@@ -423,7 +423,7 @@ describe("kid lesson board", () => {
     expect(mount.querySelector(".mission-stepper")).toBeNull();
   });
 
-  it("opens lesson detail before starting a unit lesson", async () => {
+  it("opens the style picker before starting a fresh unit lesson", async () => {
     const mount = document.createElement("div");
     container = mount;
     document.body.append(mount);
@@ -459,8 +459,10 @@ describe("kid lesson board", () => {
       await Promise.resolve();
     });
 
-    expect(mount.textContent).toContain("are");
-    expect(mount.textContent).not.toContain("Hello!");
+    const dialog = mount.querySelector<HTMLElement>("[role='dialog']");
+    expect(dialog?.textContent).toContain("Style for");
+    expect(mount.querySelector(".lesson-board")).not.toBeNull();
+    expect(mount.querySelector(".mission-stepper")).toBeNull();
   });
 
   it("starts the selected unit when using the sample mission from lesson detail", async () => {

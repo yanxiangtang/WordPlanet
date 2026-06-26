@@ -1049,7 +1049,7 @@ function App() {
     const hasGeneratedMedia = pack?.source === "agnes" || (video.status === "completed" && Boolean(video.blob || video.url));
     if (hasGeneratedMedia && hasApiKey) {
       setPendingStyle({ ...selectedStyle, label });
-    } else if (hasApiKey && startAfterPick) {
+    } else if (startAfterPick) {
       await startMission(false, startAfterPick, selectedStyle);
     } else if (hasApiKey && !pack) {
       await refreshUnitCoverForStyle(selection, selectedStyle);
@@ -1349,9 +1349,9 @@ function App() {
   }
 
   async function beginLesson() {
-    if (!pack && hasApiKey && !hasUnitStylePick) {
-      // Force a per-unit style pick before spending image credits.
-      setNotice("Pick a style for this unit, then we'll start generating.");
+    if (!pack && !hasUnitStylePick) {
+      // Force a per-unit style pick before creating the first lesson for the unit.
+      setNotice("Pick a style for this unit, then we'll start.");
       startAfterStylePickRef.current = "learn";
       setStylePickerOpen(true);
       return;
