@@ -189,7 +189,8 @@ export type VideoTaskState = {
   // Raw bytes of the completed video — persisted so the cache survives Agnes
   // CDN expiry. Absent while queued/running and on sample/error states.
   blob?: Blob;
-  // Transient object URL rebuilt from blob on hydration; not persisted.
+  // Playable URL. Blob object URLs are rebuilt from blob on hydration and not
+  // persisted; remote Agnes URLs may be kept as a fallback when byte caching fails.
   url?: string;
   error?: string;
 };

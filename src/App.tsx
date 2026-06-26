@@ -128,7 +128,15 @@ function masteryMatchesWords(mastery: MissionMastery | undefined, words: WordEnt
 }
 
 function needsRewardVideoState(video: VideoTaskState): boolean {
-  return video.status === "idle" || video.status === "failed" || (video.status === "completed" && !video.url && !video.blob);
+  return video.status === "idle" || (video.status === "completed" && !isRewardVideoReady(video));
+}
+
+function isRewardVideoReady(video: VideoTaskState): boolean {
+  return video.status === "completed" && !video.stage && Boolean(video.blob || video.url);
+}
+
+function isRewardVideoInFlight(video: VideoTaskState): boolean {
+  return video.status === "queued" || video.status === "running" || Boolean(video.stage);
 }
 
 export function canStartRewardPipeline({
@@ -400,7 +408,7 @@ function App() {
             unit.unitNumber,
             {
               hasPack: hasCurrentPack,
-              hasVideo: storedVideo?.status === "completed" && Boolean(storedVideo.blob || storedVideo.url),
+              hasVideo: storedVideo ? isRewardVideoReady(storedVideo) : false,
               hasProgress: Boolean(hasCurrentMastery && Object.values(storedMastery).some((word) =>
                 Object.values(word).some((lane) => lane.correct > 0 || lane.wrong > 0 || lane.completed)
               )),
@@ -432,13 +440,13 @@ function App() {
   const currentUnitSummary = useMemo<UnitLessonSummary>(
     () => ({
       hasPack: Boolean(pack),
-      hasVideo: video.status === "completed" && Boolean(video.blob || video.url),
+      hasVideo: isRewardVideoReady(video),
       hasProgress: Object.values(mastery).some((word) =>
         Object.values(word).some((lane) => lane.correct > 0 || lane.wrong > 0 || lane.completed)
       ),
       complete
     }),
-    [complete, mastery, pack, video.blob, video.status, video.url]
+    [complete, mastery, pack, video.blob, video.stage, video.status, video.url]
   );
   const effectiveUnitSummaries = useMemo(
     () => ({ ...unitSummaries, [selection.unitNumber]: currentUnitSummary }),
@@ -1046,7 +1054,7 @@ function App() {
     }
     setStylePickerOpen(false);
     if (!styleChanged && !startAfterPick) return;
-    const hasGeneratedMedia = pack?.source === "agnes" || (video.status === "completed" && Boolean(video.blob || video.url));
+    const hasGeneratedMedia = pack?.source === "agnes" || isRewardVideoReady(video);
     if (hasGeneratedMedia && hasApiKey) {
       setPendingStyle({ ...selectedStyle, label });
     } else if (startAfterPick) {
@@ -1234,19 +1242,29 @@ function App() {
           // ----- 4. Download bytes -----
           setVideo({ ...next, stage: "downloading", progress: 90 });
           setNotice("Almost ready — downloading your video…");
-          const blob = await scheduler.enqueue({
-            id: `rewardVideo:${unitKey}:download`,
-            kind: "rewardVideo",
-            run: (signal) => fetchAgnesVideoBlob(next.url!, { signal })
-          });
-          if (token.cancelled) return;
-          const objUrl = URL.createObjectURL(blob);
-          replaceVideoUrl(objUrl);
-          const final: VideoTaskState = { ...next, stage: undefined, blob, url: objUrl, progress: 100 };
-          setVideo(final);
-          await storage.saveVideo(final, unitKey);
-          await refreshUnitSummaries();
-          setNotice("Reward video cached.");
+          try {
+            const blob = await scheduler.enqueue({
+              id: `rewardVideo:${unitKey}:download`,
+              kind: "rewardVideo",
+              run: (signal) => fetchAgnesVideoBlob(next.url!, { signal })
+            });
+            if (token.cancelled) return;
+            const objUrl = URL.createObjectURL(blob);
+            replaceVideoUrl(objUrl);
+            const final: VideoTaskState = { ...next, stage: undefined, blob, url: objUrl, progress: 100 };
+            setVideo(final);
+            await storage.saveVideo(final, unitKey);
+            await refreshUnitSummaries();
+            setNotice("Reward video cached.");
+          } catch {
+            if (token.cancelled) return;
+            const final: VideoTaskState = { ...next, stage: undefined, blob: undefined, progress: 100 };
+            replaceVideoUrl(null);
+            setVideo(final);
+            await storage.saveVideo(final, unitKey);
+            await refreshUnitSummaries();
+            setNotice("Reward video ready. Browser cache was skipped.");
+          }
           return;
         }
         if (next.status === "failed") {
@@ -1540,7 +1558,7 @@ function App() {
       {pendingStyle && (
         <ConfirmStyleChange
           label={pendingStyle.label}
-          hasVideo={Boolean(video.status === "completed" && (video.blob || video.url))}
+          hasVideo={isRewardVideoReady(video)}
           onCancel={() => setPendingStyle(null)}
           onApplyNext={() => {
             setPendingStyle(null);
@@ -2321,10 +2339,12 @@ function RewardInline({
   onSummary: () => void;
 }) {
   const stageCopy = rewardStageCopy(video, complete);
-  const inFlight = video.status === "running" || video.status === "queued";
+  const videoReady = isRewardVideoReady(video);
+  const showVideoPlayer = videoReady && Boolean(video.url);
+  const inFlight = isRewardVideoInFlight(video);
   return (
     <div className="inline-activity reward">
-      {video.url ? (
+      {showVideoPlayer ? (
         <video controls src={video.url} />
       ) : (
         <div className="video-placeholder" role={inFlight ? "status" : undefined} aria-live={inFlight ? "polite" : undefined}>
@@ -2353,7 +2373,7 @@ function RewardInline({
           aria-disabled={inFlight}
           data-busy={inFlight ? "true" : undefined}
         >
-          {video.url ? "Make a new reward" : inFlight ? "Working..." : "Create reward"}
+          {videoReady ? "Make a new reward" : inFlight ? "Working..." : "Create reward"}
         </button>
         <button className="secondary-button" onClick={onSummary}>Summary</button>
       </div>
@@ -2362,8 +2382,6 @@ function RewardInline({
 }
 
 function rewardStageCopy(video: VideoTaskState, complete: boolean): string {
-  if (video.status === "completed" && !video.url && !video.blob) return "Sample reward ready";
-  if (video.status === "failed") return video.error ?? "Reward video failed. Tap to try again.";
   switch (video.stage) {
     case "writing-story":
       return "✍️ Writing your story…";
@@ -2374,6 +2392,8 @@ function rewardStageCopy(video: VideoTaskState, complete: boolean): string {
     case "downloading":
       return "📥 Almost ready — downloading…";
     default:
+      if (video.status === "completed" && !video.url && !video.blob) return "Sample reward ready";
+      if (video.status === "failed") return video.error ?? "Reward video failed. Tap to try again.";
       return complete ? "Video status: ready" : "Finish the missing practice below to unlock the video.";
   }
 }
@@ -2889,7 +2909,8 @@ export function ParentControlScreen({
 
   const imageCount = pack?.assets.length ?? 0;
   const storyCount = pack?.storyScenes.length ?? 0;
-  const videoReady = video.status === "completed" && Boolean(video.url);
+  const videoReady = isRewardVideoReady(video);
+  const videoInFlight = isRewardVideoInFlight(video);
   const cachedPictures = pack
     ? [
         ...pack.assets.map((asset) => {
@@ -3101,7 +3122,7 @@ export function ParentControlScreen({
             Progress
           </span>
         </div>
-        {video.url ? (
+        {videoReady && video.url ? (
           <div className="video-cache-preview">
             <video controls src={video.url} />
             <button
@@ -3114,9 +3135,9 @@ export function ParentControlScreen({
             </button>
           </div>
         ) : (
-          <div className="video-cache-empty">{video.error ?? "No cached reward video yet."}</div>
+          <div className="video-cache-empty">{video.error ?? (videoInFlight ? rewardStageCopy(video, true) : "No cached reward video yet.")}</div>
         )}
-        {isVideoBusy && (
+        {(isVideoBusy || videoInFlight) && (
           <progress
             className="video-progress"
             max={100}

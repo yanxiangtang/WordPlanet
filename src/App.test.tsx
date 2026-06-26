@@ -1021,6 +1021,17 @@ describe("reward pipeline gating", () => {
         video: { status: "completed", progress: 100, blob: new Blob(["video"], { type: "video/mp4" }) }
       })
     ).toBe(false);
+
+    expect(
+      canStartRewardPipeline({
+        screen: "reward",
+        pack,
+        hasApiKey: true,
+        isVideoBusy: false,
+        complete: true,
+        video: { status: "failed", progress: 90, error: "Agnes video download failed: 403" }
+      })
+    ).toBe(false);
   });
 });
 
@@ -1137,6 +1148,50 @@ describe("parent cached media controls", () => {
     const videoDialog = mount.querySelector<HTMLElement>("[role='dialog']");
     expect(videoDialog?.textContent).toContain("Cached reward video");
     expect(videoDialog?.querySelector("video")?.getAttribute("src")).toBe(video.url);
+  });
+
+  it("keeps transient reward video URLs in progress state until caching finishes", () => {
+    const words = selectMissionWords("yilin-grade3", "3A", 5);
+    const pack = buildSampleLessonPack(words, { setId: "yilin-grade3", title: "Book 3A" });
+    const downloadingVideo: VideoTaskState = {
+      status: "completed",
+      stage: "downloading",
+      progress: 90,
+      url: "https://example.com/transient-reward.mp4"
+    };
+    const mount = document.createElement("div");
+    container = mount;
+    document.body.append(mount);
+    root = createRoot(mount);
+
+    act(() => {
+      root?.render(
+        <ParentControlScreen
+          settings={defaultSettings}
+          profile={defaultProfile}
+          parentControls={defaultParentControlSettings}
+          selection={defaultVocabularySelection}
+          vocabularySets={vocabularySets}
+          bookUnits={bookUnits}
+          unitSummaries={unitSummaries}
+          unlocked={true}
+          pack={pack}
+          video={downloadingVideo}
+          onSettings={() => {}}
+          onProfile={() => {}}
+          onParentControls={() => {}}
+          onSelection={() => {}}
+          onUnlock={() => {}}
+          onDeletePictures={() => {}}
+          onDeleteVideo={() => {}}
+          isVideoBusy={true}
+        />
+      );
+    });
+
+    expect(mount.querySelector(".video-cache-preview")).toBeNull();
+    expect(mount.querySelector("video")).toBeNull();
+    expect(mount.querySelector<HTMLProgressElement>(".video-progress")?.value).toBe(90);
   });
 
   it("keeps parent cache cards delete-only", () => {

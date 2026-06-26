@@ -220,8 +220,7 @@ async function remove(storeName: string, key: string): Promise<void> {
 }
 
 // Strip transient object-URL fields so only persistent Blob bytes are stored.
-// Object URLs (`blob:…`) are tab-scoped and meaningless across reloads, and
-// would also waste space in the IDB record.
+// Object URLs (`blob:...`) are tab-scoped and meaningless across reloads.
 function stripLessonObjectUrls(lesson: LessonPack): LessonPack {
   return {
     ...lesson,
@@ -231,7 +230,9 @@ function stripLessonObjectUrls(lesson: LessonPack): LessonPack {
 }
 
 function stripVideoObjectUrl(video: VideoTaskState): VideoTaskState {
-  if (video.url === undefined) return video;
+  // Keep remote Agnes URLs as a fallback when byte caching fails; strip only
+  // local blob object URLs because they cannot survive a page reload.
+  if (video.url === undefined || !video.url.startsWith("blob:")) return video;
   const { url: _stripped, ...rest } = video;
   return rest;
 }
