@@ -335,7 +335,7 @@ describe("interactive spelling practice", () => {
     container = undefined;
   });
 
-  it("keeps a wrong answer visible, shows feedback, and reshuffles tiles", async () => {
+  it("auto-checks a full wrong spelling answer and lets a box remove one character", async () => {
     const mount = document.createElement("div");
     container = mount;
     document.body.append(mount);
@@ -362,29 +362,127 @@ describe("interactive spelling practice", () => {
       await Promise.resolve();
     });
 
-    const originalButtons = Array.from(mount.querySelectorAll<HTMLButtonElement>(".letter-bank button"));
-    const originalTiles = originalButtons.map((button) => button.textContent).join("");
-    const partialAttempt = originalButtons[0]?.textContent ?? "";
+    expect(
+      Array.from(mount.querySelectorAll<HTMLButtonElement>("button")).some((button) => button.textContent?.trim() === "Check")
+    ).toBe(false);
+
+    const word = selectMissionWords(
+      defaultVocabularySelection.setId,
+      defaultVocabularySelection.bookId,
+      defaultVocabularySelection.wordsPerMission,
+      defaultVocabularySelection.unitNumber
+    )[0];
+    const tileButtons = Array.from(mount.querySelectorAll<HTMLButtonElement>(".letter-bank button"));
+    const displayedAttempt = tileButtons.map((button) => button.textContent ?? "").join("");
+    const wrongButtons = displayedAttempt === word.word ? [...tileButtons].reverse() : tileButtons;
+
+    for (const button of wrongButtons) {
+      await act(async () => {
+        button.click();
+        await Promise.resolve();
+      });
+    }
+
+    expect(mount.querySelector(".spell-feedback.retry")?.textContent).toContain("Try again");
+    expect(mount.querySelector(".spell-answer.retry.shake")).not.toBeNull();
+    expect(mount.querySelectorAll(".spell-box.filled").length).toBe(word.word.length);
 
     await act(async () => {
-      originalButtons[0]?.click();
+      mount.querySelector<HTMLButtonElement>(".spell-box.filled")?.click();
       await Promise.resolve();
     });
 
+    expect(mount.querySelector(".spell-feedback")).toBeNull();
+    expect(mount.querySelectorAll(".spell-box.filled").length).toBe(word.word.length - 1);
+  });
+
+  it("auto-checks a correct spelling answer and turns the boxes green", async () => {
+    const mount = document.createElement("div");
+    container = mount;
+    document.body.append(mount);
+    root = createRoot(mount);
+
     await act(async () => {
-      Array.from(mount.querySelectorAll<HTMLButtonElement>("button"))
-        .find((button) => button.textContent?.trim() === "Check")
-        ?.click();
+      root?.render(<App />);
       await Promise.resolve();
     });
 
-    const reshuffledTiles = Array.from(mount.querySelectorAll<HTMLButtonElement>(".letter-bank button"))
-      .map((button) => button.textContent)
-      .join("");
+    const sample = Array.from(mount.querySelectorAll<HTMLButtonElement>("button")).find((button) =>
+      button.textContent?.includes("Use Sample Mission")
+    );
+    await act(async () => {
+      sample?.click();
+      await Promise.resolve();
+    });
 
-    expect(mount.querySelector<HTMLInputElement>(".spell-input")?.value).toBe(partialAttempt);
-    expect(mount.querySelector(".spell-feedback")?.textContent).toContain("Try again");
-    expect(reshuffledTiles).not.toBe(originalTiles);
+    const spellStep = Array.from(mount.querySelectorAll<HTMLButtonElement>(".mission-stepper-item")).find((button) =>
+      button.textContent?.includes("Spell")
+    );
+    await act(async () => {
+      spellStep?.click();
+      await Promise.resolve();
+    });
+
+    const word = selectMissionWords(
+      defaultVocabularySelection.setId,
+      defaultVocabularySelection.bookId,
+      defaultVocabularySelection.wordsPerMission,
+      defaultVocabularySelection.unitNumber
+    )[0];
+
+    for (const letter of word.word.split("")) {
+      const button = Array.from(mount.querySelectorAll<HTMLButtonElement>(".letter-bank button")).find(
+        (candidate) => candidate.textContent === letter && !candidate.disabled
+      );
+      await act(async () => {
+        button?.click();
+        await Promise.resolve();
+      });
+    }
+
+    expect(mount.querySelector(".spell-feedback.correct")?.textContent).toContain(`Great spelling: ${word.word}!`);
+    expect(mount.querySelector(".spell-answer.correct")).not.toBeNull();
+  });
+
+  it("moves to the next spelling word before unlocking reward", async () => {
+    const mount = document.createElement("div");
+    container = mount;
+    document.body.append(mount);
+    root = createRoot(mount);
+
+    await act(async () => {
+      root?.render(<App />);
+      await Promise.resolve();
+    });
+
+    const sample = Array.from(mount.querySelectorAll<HTMLButtonElement>("button")).find((button) =>
+      button.textContent?.includes("Use Sample Mission")
+    );
+    await act(async () => {
+      sample?.click();
+      await Promise.resolve();
+    });
+
+    const spellStep = Array.from(mount.querySelectorAll<HTMLButtonElement>(".mission-stepper-item")).find((button) =>
+      button.textContent?.includes("Spell")
+    );
+    await act(async () => {
+      spellStep?.click();
+      await Promise.resolve();
+    });
+
+    const firstPrompt = mount.querySelector<HTMLElement>(".inline-activity.spell h3")?.textContent;
+    const continueButton = mount.querySelector<HTMLButtonElement>(".spelling-actions .finish-button");
+
+    await act(async () => {
+      continueButton?.click();
+      await Promise.resolve();
+    });
+
+    expect(mount.querySelector(".inline-activity.spell")).not.toBeNull();
+    expect(mount.querySelector<HTMLElement>(".inline-activity.spell h3")?.textContent).not.toBe(firstPrompt);
+    expect(mount.querySelector<HTMLElement>(".mission-stepper-item.active")?.textContent).toContain("Spell");
+    expect(mount.querySelector(".inline-activity.reward")).toBeNull();
   });
 });
 
@@ -496,6 +594,46 @@ describe("kid lesson board", () => {
 
     expect(mount.querySelector(".lesson-board")).toBeNull();
     expect(mount.querySelector<HTMLElement>(".word-focus-card")?.textContent).toContain("are");
+  });
+
+  it("moves to Story when tapping Next on the last learn word", async () => {
+    const mount = document.createElement("div");
+    container = mount;
+    document.body.append(mount);
+    root = createRoot(mount);
+
+    await act(async () => {
+      root?.render(<App />);
+      await Promise.resolve();
+    });
+
+    const sample = Array.from(mount.querySelectorAll<HTMLButtonElement>("button")).find((button) =>
+      button.textContent?.includes("Use Sample Mission")
+    );
+
+    await act(async () => {
+      sample?.click();
+      await Promise.resolve();
+    });
+
+    const totalWords = selectMissionWords(
+      defaultVocabularySelection.setId,
+      defaultVocabularySelection.bookId,
+      defaultVocabularySelection.wordsPerMission,
+      defaultVocabularySelection.unitNumber
+    ).length;
+
+    for (let i = 0; i < totalWords; i += 1) {
+      const next = mount.querySelector<HTMLButtonElement>(".word-focus-card .primary-button");
+      await act(async () => {
+        next?.click();
+        await Promise.resolve();
+      });
+    }
+
+    expect(mount.querySelector(".word-focus-card")).toBeNull();
+    expect(mount.querySelector<HTMLElement>(".mission-stepper-item.active")?.textContent).toContain("Story");
+    expect(mount.querySelector<HTMLElement>(".inline-activity.story")).not.toBeNull();
   });
 
   it("shows a Style for this unit row with a Change action on the lesson detail", async () => {

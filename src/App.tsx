@@ -23,7 +23,7 @@ import {
   X,
   type LucideIcon
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { getUnitWords, getVocabularySet, listBookUnits, listVocabularySets, selectMissionWords } from "./data/vocabulary";
 import {
   buildStoryScenePrompt,
@@ -1118,9 +1118,13 @@ function App() {
     const correct = attempt.toLowerCase() === word.word.toLowerCase();
     await mark(word, "write", correct);
     setSpellFeedback({ kind: correct ? "correct" : "retry", attempt, word: word.word });
-    setSpellShuffleSeed((value) => value + 1);
     setNotice(correct ? `Great spelling: ${word.word}!` : `Good try. The word is ${word.word}.`);
   }
+
+  const handleSpellInput = useCallback((value: string) => {
+    setSpellInput(value);
+    setSpellFeedback(null);
+  }, []);
 
   async function startVideoReward() {
     if (!pack) return;
@@ -1391,6 +1395,41 @@ function App() {
     await switchToUnit({ ...selection, unitNumber }, true);
   }
 
+  function advanceLearnWord() {
+    if (activeIndex >= dashboardPack.words.length - 1) {
+      setScreen("story");
+      return;
+    }
+    setActiveIndex((value) => Math.min(dashboardPack.words.length - 1, value + 1));
+  }
+
+  function resetSpellState() {
+    setSpellInput("");
+    setSpellFeedback(null);
+    setSpellShuffleSeed((value) => value + 1);
+  }
+
+  function openSpellPractice() {
+    setActiveIndex(0);
+    resetSpellState();
+    setScreen("spell");
+  }
+
+  function continueGameToSpell() {
+    setActiveIndex(0);
+    resetSpellState();
+    transitionWithCheer("Great matching!", "spell");
+  }
+
+  function advanceSpellWord() {
+    if (activeIndex >= dashboardPack.words.length - 1) {
+      transitionWithCheer("Super spelling!", "reward");
+      return;
+    }
+    resetSpellState();
+    setActiveIndex((value) => Math.min(dashboardPack.words.length - 1, value + 1));
+  }
+
   const isLessonPicker = screen === "home";
   const busy = isGenerating || isVideoBusy;
   const visibleNotice = notice && !busy && !isOngoingNoticeText(notice) ? notice : "";
@@ -1467,23 +1506,23 @@ function App() {
             onSample={() => startMission(true, screen === "home" ? "learn" : "home")}
             onSelectUnit={(unitNumber) => void chooseLessonUnit(unitNumber)}
             onBackWord={() => setActiveIndex((value) => Math.max(0, value - 1))}
-            onNextWord={() => setActiveIndex((value) => Math.min(dashboardPack.words.length - 1, value + 1))}
+            onNextWord={advanceLearnWord}
             onMarkMeaning={() => mark(activeWord, "meaning", true)}
             onSay={() => checkSpeech(activeWord)}
             onStory={() => setScreen("story")}
             onGame={() => setScreen("game")}
-            onSpell={() => setScreen("spell")}
+            onSpell={openSpellPractice}
             onReward={() => setScreen("reward")}
             onSummary={() => setScreen("summary")}
             onHome={() => setScreen("home")}
             onLearn={() => setScreen("learn")}
-            onInput={setSpellInput}
+            onInput={handleSpellInput}
             onCheckSpell={() => handleSpell(activeWord)}
             onCreateVideo={startVideoReward}
             onGameAnswer={(word, correct) => mark(word, "meaning", correct)}
             onStoryContinue={() => transitionWithCheer("Story complete!", "game")}
-            onGameContinue={() => transitionWithCheer("Great matching!", "spell")}
-            onSpellContinue={() => transitionWithCheer("Super spelling!", "reward")}
+            onGameContinue={continueGameToSpell}
+            onSpellContinue={advanceSpellWord}
             onRewardSummary={() => transitionWithCheer("Mission complete! 🎉", "summary")}
           />
         )}
@@ -1690,6 +1729,8 @@ function MissionDashboard({
                 <SpellingInline
                   word={activeWord}
                   settings={settings}
+                  activeIndex={activeIndex}
+                  totalWords={pack.words.length}
                   spellInput={spellInput}
                   feedback={spellFeedback}
                   shuffleSeed={spellShuffleSeed}
@@ -2129,6 +2170,8 @@ function PictureGameInline({
 function SpellingInline({
   word,
   settings,
+  activeIndex,
+  totalWords,
   spellInput,
   feedback,
   shuffleSeed,
@@ -2138,6 +2181,8 @@ function SpellingInline({
 }: {
   word: WordEntry;
   settings: AgnesSettings;
+  activeIndex: number;
+  totalWords: number;
   spellInput: string;
   feedback: SpellingFeedback | null;
   shuffleSeed: number;
@@ -2147,6 +2192,8 @@ function SpellingInline({
 }) {
   const tiles = useMemo(() => buildShuffledLetterTiles(word.word, shuffleSeed), [shuffleSeed, word.word]);
   const [selectedTiles, setSelectedTiles] = useState<string[]>([]);
+  const lastAutoCheckedRef = useRef<string | null>(null);
+  const selectedLetters = selectedTiles.map((tileId) => tiles.find((tile) => tile.id === tileId)?.letter ?? "");
 
   useEffect(() => {
     setSelectedTiles([]);
@@ -2157,10 +2204,34 @@ function SpellingInline({
     setSelectedTiles([]);
   }, [shuffleSeed]);
 
+  const isLastWord = activeIndex >= totalWords - 1;
+
+  useEffect(() => {
+    if (spellInput.length !== word.word.length) {
+      lastAutoCheckedRef.current = null;
+      return;
+    }
+    if (lastAutoCheckedRef.current === spellInput) return;
+    lastAutoCheckedRef.current = spellInput;
+    onCheck();
+  }, [onCheck, spellInput, word.word.length]);
+
   function selectTile(tileId: string, letter: string) {
     if (selectedTiles.includes(tileId) || spellInput.length >= word.word.length) return;
-    setSelectedTiles((current) => [...current, tileId]);
+    const nextTiles = [...selectedTiles, tileId];
+    setSelectedTiles(nextTiles);
     onInput(`${spellInput}${letter}`);
+  }
+
+  function removeSelectedTile(index: number) {
+    if (!selectedTiles[index]) return;
+    const nextTiles = selectedTiles.filter((_, tileIndex) => tileIndex !== index);
+    setSelectedTiles(nextTiles);
+    onInput(
+      nextTiles
+        .map((tileId) => tiles.find((tile) => tile.id === tileId)?.letter ?? "")
+        .join("")
+    );
   }
 
   function clearAnswer() {
@@ -2176,15 +2247,26 @@ function SpellingInline({
           <Volume2 size={18} />
           Hear word
         </button>
-        <input
-          className="spell-input"
-          value={spellInput}
-          onChange={(event) => {
-            setSelectedTiles([]);
-            onInput(event.target.value);
-          }}
-          placeholder="_ _ _ _ _ _ _"
-        />
+        <div
+          className={`spell-answer ${feedback?.kind ?? ""} ${feedback?.kind === "retry" ? "shake" : ""}`}
+          aria-label="Spelling answer"
+        >
+          {Array.from({ length: word.word.length }).map((_, index) => {
+            const letter = selectedLetters[index];
+            return (
+              <button
+                key={index}
+                className={`spell-box ${letter ? "filled" : "empty"}`}
+                type="button"
+                onClick={() => removeSelectedTile(index)}
+                disabled={!letter}
+                aria-label={letter ? `Remove ${letter}` : `Letter ${index + 1}`}
+              >
+                {letter}
+              </button>
+            );
+          })}
+        </div>
         <div className="letter-bank">
           {tiles.map((tile) => (
             <button
@@ -2214,11 +2296,10 @@ function SpellingInline({
           </div>
         )}
         <div className="button-row spelling-actions">
-          <button className="primary-button" onClick={onCheck}>Check</button>
           <button className="secondary-button" onClick={clearAnswer} type="button">Clear</button>
           <button className="finish-button" onClick={onContinue}>
-            Unlock Video Reward
-            <Play size={18} />
+            {isLastWord ? "Unlock Video Reward" : "Next word"}
+            {isLastWord ? <Play size={18} /> : <ArrowRight size={18} />}
           </button>
         </div>
       </div>
