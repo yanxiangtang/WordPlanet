@@ -119,10 +119,10 @@ export type StoryScene = {
 };
 
 // LLM-written narrative that ties a mission's vocabulary into a short kid story.
-// Generated once when the kid first reaches the reward screen (or the Story
-// screen, whichever comes first) and persisted on the lesson pack so reloads
-// don't re-spend the credit. The story drives the reward-video prompt AND the
-// per-scene image prompts on the Story screen.
+// Generated once when the lesson starts (or lazily on Story for packs that
+// predate background video generation) and persisted on the lesson pack so
+// reloads don't re-spend the credit. The story drives the reward-video prompt
+// AND the per-scene image prompts on the Story screen.
 export type StoryText = {
   text: string;
   textZh: string;
@@ -158,8 +158,8 @@ export type LessonPack = {
   // this unit" without going back to IDB.
   unitStyleId?: string;
   unitStyleNote?: string;
-  // LLM-written story for this mission. Filled lazily when the kid first
-  // reaches the Story or Reward screen, then cached so subsequent visits
+  // LLM-written story for this mission. Filled by the background reward
+  // pipeline or lazily by the Story screen, then cached so subsequent visits
   // reuse it.
   storyText?: StoryText;
   words: WordEntry[];

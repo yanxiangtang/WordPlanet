@@ -2002,8 +2002,7 @@ select:focus {
   opacity: 1;
 }
 
-.spell-feedback,
-.reward-gap-panel {
+.spell-feedback {
   display: grid;
   gap: 6px;
   max-width: 560px;
@@ -2020,8 +2019,7 @@ select:focus {
   border: 1px solid #bbf7d0;
 }
 
-.spell-feedback.retry,
-.reward-gap-panel {
+.spell-feedback.retry {
   color: #991b1b;
   background: #fef2f2;
   border: 1px solid #fecaca;
@@ -2030,10 +2028,6 @@ select:focus {
 .spell-feedback .secondary-button {
   justify-self: center;
   min-height: 40px;
-}
-
-.reward-gap-panel span {
-  color: #4f3714;
 }
 
 .spelling-actions {
@@ -2129,6 +2123,11 @@ video {
   background: #f4f7fb;
 }
 
+.mission-stepper-item.needs-practice:not(.active):not(.complete) {
+  border-color: #f3c45f;
+  background: #fff8e6;
+}
+
 .stepper-step {
   width: 26px;
   height: 26px;
@@ -2153,11 +2152,33 @@ video {
 .stepper-copy {
   min-width: 0;
   display: grid;
-  gap: 2px;
+  grid-template-columns: minmax(0, 1fr) max-content;
+  align-items: center;
+  gap: 4px 8px;
 }
 
 .stepper-copy strong {
+  grid-column: 1;
   color: #102042;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.stepper-progress-badge {
+  grid-column: 2;
+  grid-row: 1;
+  justify-self: end;
+  width: fit-content;
+  max-width: 100%;
+  padding: 2px 6px;
+  border-radius: 999px;
+  color: #6f4500;
+  background: #fff0bd;
+  border: 1px solid #f3c45f;
+  font-size: 0.72rem;
+  font-weight: 900;
+  line-height: 1.15;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

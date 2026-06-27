@@ -237,6 +237,97 @@ describe("mission dock navigation", () => {
     expect(mount.textContent).not.toContain("Back to Mission");
   });
 
+  it("moves missing reward practice details into compact mission step badges", async () => {
+    const mount = document.createElement("div");
+    container = mount;
+    document.body.append(mount);
+    root = createRoot(mount);
+    const totalWords = selectMissionWords(
+      defaultVocabularySelection.setId,
+      defaultVocabularySelection.bookId,
+      defaultVocabularySelection.wordsPerMission,
+      defaultVocabularySelection.unitNumber
+    ).length;
+
+    await act(async () => {
+      root?.render(<App />);
+      await Promise.resolve();
+    });
+
+    const sample = Array.from(mount.querySelectorAll<HTMLButtonElement>("button")).find((button) =>
+      button.textContent?.includes("Use Sample Mission")
+    );
+    await act(async () => {
+      sample?.click();
+      await Promise.resolve();
+    });
+
+    const rewardStep = Array.from(mount.querySelectorAll<HTMLButtonElement>(".mission-stepper-item")).find((button) =>
+      button.textContent?.includes("Reward")
+    );
+    await act(async () => {
+      rewardStep?.click();
+      await Promise.resolve();
+    });
+
+    const rewardPanel = mount.querySelector<HTMLElement>(".inline-activity.reward");
+    expect(rewardPanel?.textContent).not.toContain("Finish the missing practice below to unlock the video");
+    expect(rewardPanel?.textContent).not.toContain("Hello!");
+    expect(rewardPanel?.textContent).not.toContain("Good morning.");
+    expect(rewardPanel?.textContent).toContain("Complete the highlighted phases to unlock your reward.");
+
+    const gameStep = Array.from(mount.querySelectorAll<HTMLButtonElement>(".mission-stepper-item")).find((button) =>
+      button.textContent?.includes("Game")
+    );
+    const spellStep = Array.from(mount.querySelectorAll<HTMLButtonElement>(".mission-stepper-item")).find((button) =>
+      button.textContent?.includes("Spell")
+    );
+    expect(gameStep?.querySelector(".stepper-progress-badge")?.textContent).toBe(`0/${totalWords}`);
+    expect(spellStep?.querySelector(".stepper-progress-badge")?.textContent).toBe(`0/${totalWords}`);
+    expect(gameStep?.textContent).not.toContain(`Meaning 0/${totalWords}`);
+    expect(spellStep?.textContent).not.toContain(`Spelling 0/${totalWords}`);
+  });
+
+  it("updates the phase bar meaning badge as meaning practice is completed", async () => {
+    const mount = document.createElement("div");
+    container = mount;
+    document.body.append(mount);
+    root = createRoot(mount);
+    const totalWords = selectMissionWords(
+      defaultVocabularySelection.setId,
+      defaultVocabularySelection.bookId,
+      defaultVocabularySelection.wordsPerMission,
+      defaultVocabularySelection.unitNumber
+    ).length;
+
+    await act(async () => {
+      root?.render(<App />);
+      await Promise.resolve();
+    });
+
+    const sample = Array.from(mount.querySelectorAll<HTMLButtonElement>("button")).find((button) =>
+      button.textContent?.includes("Use Sample Mission")
+    );
+    await act(async () => {
+      sample?.click();
+      await Promise.resolve();
+    });
+
+    const knowIt = Array.from(mount.querySelectorAll<HTMLButtonElement>("button")).find((button) =>
+      button.textContent?.includes("I know it")
+    );
+    await act(async () => {
+      knowIt?.click();
+      await Promise.resolve();
+    });
+
+    const gameStep = Array.from(mount.querySelectorAll<HTMLButtonElement>(".mission-stepper-item")).find((button) =>
+      button.textContent?.includes("Game")
+    );
+    expect(gameStep?.querySelector(".stepper-progress-badge")?.textContent).toBe(`1/${totalWords}`);
+    expect(gameStep?.textContent).not.toContain(`Meaning 1/${totalWords}`);
+  });
+
   it("keeps parent controls reachable from the top bar with a contextual return action", async () => {
     const mount = document.createElement("div");
     container = mount;
@@ -260,6 +351,56 @@ describe("mission dock navigation", () => {
 
     expect(mount.textContent).toContain("Return to Learning");
     expect(mount.textContent).not.toContain("Back to Mission");
+  });
+
+  it("returns from parent controls to the learning page that opened them", async () => {
+    const mount = document.createElement("div");
+    container = mount;
+    document.body.append(mount);
+    root = createRoot(mount);
+
+    await act(async () => {
+      root?.render(<App />);
+      await Promise.resolve();
+    });
+
+    const sample = Array.from(mount.querySelectorAll<HTMLButtonElement>("button")).find((button) =>
+      button.textContent?.includes("Use Sample Mission")
+    );
+    await act(async () => {
+      sample?.click();
+      await Promise.resolve();
+    });
+
+    const spellStep = Array.from(mount.querySelectorAll<HTMLButtonElement>(".mission-stepper-item")).find((button) =>
+      button.textContent?.includes("Spell")
+    );
+    await act(async () => {
+      spellStep?.click();
+      await Promise.resolve();
+    });
+
+    expect(mount.querySelector<HTMLElement>(".mission-stepper-item.active")?.textContent).toContain("Spell");
+
+    const avatarButton = Array.from(mount.querySelectorAll<HTMLButtonElement>("button")).find((button) =>
+      button.textContent?.includes(defaultProfile.nickname)
+    );
+    await act(async () => {
+      avatarButton?.click();
+      await Promise.resolve();
+    });
+
+    const returnButton = Array.from(mount.querySelectorAll<HTMLButtonElement>("button")).find((button) =>
+      button.textContent?.includes("Return to Learning")
+    );
+    await act(async () => {
+      returnButton?.click();
+      await Promise.resolve();
+    });
+
+    expect(mount.querySelector(".lesson-board")).toBeNull();
+    expect(mount.querySelector<HTMLElement>(".mission-stepper-item.active")?.textContent).toContain("Spell");
+    expect(window.location.search).toContain("page=spell");
   });
 
   it("uses a contextual summary return action", () => {
@@ -440,7 +581,9 @@ describe("interactive spelling practice", () => {
       });
     }
 
-    expect(mount.querySelector(".spell-feedback.correct")?.textContent).toContain(`Great spelling: ${word.word}!`);
+    expect(mount.querySelector(".spell-feedback.correct")).toBeNull();
+    expect(mount.textContent).not.toContain(`Great spelling: ${word.word}!`);
+    expect(mount.textContent).not.toContain(`Your answer: ${word.word}`);
     expect(mount.querySelector(".spell-answer.correct")).not.toBeNull();
   });
 
@@ -634,6 +777,56 @@ describe("kid lesson board", () => {
     expect(mount.querySelector(".word-focus-card")).toBeNull();
     expect(mount.querySelector<HTMLElement>(".mission-stepper-item.active")?.textContent).toContain("Story");
     expect(mount.querySelector<HTMLElement>(".inline-activity.story")).not.toBeNull();
+  });
+
+  it("advances through picture game words before going to spelling", async () => {
+    const mount = document.createElement("div");
+    container = mount;
+    document.body.append(mount);
+    root = createRoot(mount);
+
+    await act(async () => {
+      root?.render(<App />);
+      await Promise.resolve();
+    });
+
+    const sample = Array.from(mount.querySelectorAll<HTMLButtonElement>("button")).find((button) =>
+      button.textContent?.includes("Use Sample Mission")
+    );
+
+    await act(async () => {
+      sample?.click();
+      await Promise.resolve();
+    });
+
+    const gameStep = Array.from(mount.querySelectorAll<HTMLButtonElement>(".mission-stepper-item")).find((button) =>
+      button.textContent?.includes("Game")
+    );
+
+    await act(async () => {
+      gameStep?.click();
+      await Promise.resolve();
+    });
+
+    const words = selectMissionWords(
+      defaultVocabularySelection.setId,
+      defaultVocabularySelection.bookId,
+      defaultVocabularySelection.wordsPerMission,
+      defaultVocabularySelection.unitNumber
+    );
+
+    expect(mount.querySelector<HTMLElement>(".inline-activity.game h3")?.textContent).toContain(words[0].word);
+    expect(mount.querySelector<HTMLButtonElement>(".inline-activity.game .primary-button")?.textContent).toContain("Next game");
+
+    await act(async () => {
+      mount.querySelector<HTMLButtonElement>(".inline-activity.game .primary-button")?.click();
+      await Promise.resolve();
+    });
+
+    expect(mount.querySelector(".inline-activity.game")).not.toBeNull();
+    expect(mount.querySelector(".inline-activity.spell")).toBeNull();
+    expect(mount.querySelector<HTMLElement>(".inline-activity.game h3")?.textContent).toContain(words[1].word);
+    expect(mount.querySelector<HTMLElement>(".mission-stepper-item.active")?.textContent).toContain("Game");
   });
 
   it("shows a Style for this unit row with a Change action on the lesson detail", async () => {
@@ -890,8 +1083,9 @@ describe("non-blocking Agnes unit media generation", () => {
     expect(mount.querySelector(".word-focus-card")).not.toBeNull();
     expect(calls.wordImages).toBeGreaterThan(0);
     expect(calls.unitCovers).toBeGreaterThan(0);
-    expect(calls.storyText).toBeGreaterThan(0);
+    expect(calls.storyText).toBe(1);
     expect(calls.storyImages).toBeGreaterThan(0);
+    expect(calls.videos).toBeGreaterThan(0);
   });
 
   it("streams completed word images into the already-open lesson", async () => {
@@ -984,14 +1178,14 @@ describe("non-blocking Agnes unit media generation", () => {
 });
 
 describe("reward pipeline gating", () => {
-  it("only allows reward video generation after mission completion", () => {
+  it("allows reward video generation in the background once a lesson has started", () => {
     const words = selectMissionWords("yilin-grade3", "3A", 5);
     const pack: LessonPack = buildSampleLessonPack(words, { setId: "yilin-grade3", title: "Book 3A" });
     const idleVideo: VideoTaskState = { status: "idle", progress: 0 };
 
     expect(
       canStartRewardPipeline({
-        screen: "reward",
+        screen: "home",
         pack,
         hasApiKey: true,
         isVideoBusy: false,
@@ -1002,11 +1196,11 @@ describe("reward pipeline gating", () => {
 
     expect(
       canStartRewardPipeline({
-        screen: "reward",
+        screen: "learn",
         pack,
         hasApiKey: true,
         isVideoBusy: false,
-        complete: true,
+        complete: false,
         video: idleVideo
       })
     ).toBe(true);
@@ -1017,7 +1211,7 @@ describe("reward pipeline gating", () => {
         pack,
         hasApiKey: true,
         isVideoBusy: false,
-        complete: true,
+        complete: false,
         video: { status: "completed", progress: 100, blob: new Blob(["video"], { type: "video/mp4" }) }
       })
     ).toBe(false);
@@ -1028,7 +1222,7 @@ describe("reward pipeline gating", () => {
         pack,
         hasApiKey: true,
         isVideoBusy: false,
-        complete: true,
+        complete: false,
         video: { status: "failed", progress: 90, error: "Agnes video download failed: 403" }
       })
     ).toBe(false);

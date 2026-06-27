@@ -28,6 +28,15 @@ describe("mission stepper layout", () => {
     expect(css).not.toMatch(/\.mission-dashboard:has\(\s*>\s*\.mission-dock\s*\)/);
   });
 
+  it("keeps incomplete step counts aligned to the right of phase labels", () => {
+    const stepperCopyRule = css.match(/\.stepper-copy\s*{(?<body>[^}]*)}/s)?.groups?.body ?? "";
+    const badgeRule = css.match(/\.stepper-progress-badge\s*{(?<body>[^}]*)}/s)?.groups?.body ?? "";
+
+    expect(stepperCopyRule).toMatch(/grid-template-columns\s*:\s*minmax\(0,\s*1fr\)\s+max-content/);
+    expect(badgeRule).toMatch(/justify-self\s*:\s*end/);
+    expect(badgeRule).toMatch(/grid-column\s*:\s*2/);
+  });
+
   it("keeps the flex chain so the hero claims leftover viewport height", () => {
     const appShellRule = css.match(/\.app-shell\s*{(?<body>[^}]*)}/s)?.groups?.body ?? "";
     const mainStageRule = css.match(/\.main-stage\s*{(?<body>[^}]*)}/s)?.groups?.body ?? "";

@@ -408,7 +408,7 @@ export async function pollAgnesVideo(
 // === Story text ==========================================================
 //
 // One short, kid-friendly narrative per mission, written by the text LLM
-// when the kid first reaches the Story or Reward screen. The story drives:
+// when the lesson starts or when an older pack first opens Story. The story drives:
 //   * the reward video prompt (so the video reflects what the kid just
 //     finished learning rather than just listing the words), and
 //   * the Story-screen scene images (so each illustrated scene depicts a

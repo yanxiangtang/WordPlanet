@@ -98,6 +98,7 @@ import type {
 
 type Screen = "setup" | LearningScreen;
 const URL_SCREENS = new Set<Screen>(["home", "learn", "story", "game", "spell", "reward", "summary", "setup"]);
+const LESSON_STARTED_SCREENS = new Set<Screen>(["learn", "story", "game", "spell", "reward", "summary"]);
 
 type UnitLessonSummary = {
   hasPack: boolean;
@@ -144,7 +145,6 @@ export function canStartRewardPipeline({
   pack,
   hasApiKey,
   isVideoBusy,
-  complete,
   video
 }: {
   screen: Screen;
@@ -154,7 +154,7 @@ export function canStartRewardPipeline({
   complete: boolean;
   video: VideoTaskState;
 }): boolean {
-  return screen === "reward" && Boolean(pack) && hasApiKey && !isVideoBusy && complete && needsRewardVideoState(video);
+  return LESSON_STARTED_SCREENS.has(screen) && Boolean(pack) && hasApiKey && !isVideoBusy && needsRewardVideoState(video);
 }
 
 function readScreenFromUrl(): Screen | null {
@@ -205,6 +205,10 @@ function App() {
   );
   const [parentUnlocked, setParentUnlocked] = useState(false);
   const [screen, setScreen] = useState<Screen>(() => readScreenFromUrl() ?? "home");
+  const [setupReturnScreen, setSetupReturnScreen] = useState<LearningScreen>(() => {
+    const initialScreen = readScreenFromUrl();
+    return initialScreen && initialScreen !== "setup" ? initialScreen : "home";
+  });
   const [pack, setPack] = useState<LessonPack | null>(null);
   const [selection, setSelection] = useState<VocabularySelection>(() =>
     resolveSelection(typeof window === "undefined" ? defaultVocabularySelection : loadVocabularySelection())
@@ -313,6 +317,11 @@ function App() {
 
   function isCurrentMediaRun(unitKey: string, runId: string): boolean {
     return unitMediaRunRef.current === `${unitKey}:${runId}` && activeUnitKeyRef.current === unitKey;
+  }
+
+  function activeMediaRunIdForUnit(unitKey: string): string | null {
+    const prefix = `${unitKey}:`;
+    return unitMediaRunRef.current?.startsWith(prefix) ? unitMediaRunRef.current.slice(prefix.length) : null;
   }
 
   function cancelUnitMediaJobs(unitKey: string) {
@@ -745,9 +754,9 @@ function App() {
     });
   }
 
-  function saveStoryOnCurrentPack(unitKey: string, runId: string, story: StoryText) {
+  function saveStoryOnCurrentPack(unitKey: string, runId: string | null, story: StoryText) {
     setPack((prev) => {
-      if (!prev || !isCurrentMediaRun(unitKey, runId)) return prev;
+      if (!prev || (runId && !isCurrentMediaRun(unitKey, runId))) return prev;
       const nextPack: LessonPack = { ...prev, storyText: story };
       void storage.saveLesson(nextPack, unitKey);
       return nextPack;
@@ -1126,7 +1135,7 @@ function App() {
     const correct = attempt.toLowerCase() === word.word.toLowerCase();
     await mark(word, "write", correct);
     setSpellFeedback({ kind: correct ? "correct" : "retry", attempt, word: word.word });
-    setNotice(correct ? `Great spelling: ${word.word}!` : `Good try. The word is ${word.word}.`);
+    if (!correct) setNotice(`Good try. The word is ${word.word}.`);
   }
 
   const handleSpellInput = useCallback((value: string) => {
@@ -1149,20 +1158,19 @@ function App() {
       });
       return;
     }
-    // Manual retry button — runs the same pipeline as the reward-screen
+    // Manual retry button — runs the same pipeline as the lesson-start
     // auto-trigger.
     await runRewardPipeline(pack);
   }
 
   // Reward pipeline: write a kid-friendly story with the text LLM, then
-  // submit a video task seeded by the first word image, then poll until
-  // ready and download the bytes.
+  // submit a video task, poll until ready, and download the bytes.
   //
-  // The pipeline runs only after the kid reaches the reward screen so we
-  // don't burn video credits on a lesson the kid abandons mid-way. Each
-  // step is funnelled through the media scheduler so transient Agnes
-  // errors retry transparently and a unit switch / style change can cancel
-  // the whole chain via cancelAll.
+  // The pipeline starts in the background once a real lesson opens so the
+  // slow video work can overlap with learning. Each step is funnelled
+  // through the media scheduler so transient Agnes errors retry
+  // transparently and a unit switch / style change can cancel the whole
+  // chain via cancelAll.
   async function runRewardPipeline(targetPack: LessonPack) {
     if (isVideoBusy) return;
     if (!hasApiKey) return;
@@ -1179,9 +1187,10 @@ function App() {
       setNotice("Writing your reward story…");
       let story: StoryText | undefined = targetPack.storyText;
       if (!story) {
+        const activeRunId = activeMediaRunIdForUnit(unitKey);
         try {
           story = await scheduler.enqueue({
-            id: `storyText:${unitKey}`,
+            id: activeRunId ? `storyText:${unitKey}:${activeRunId}` : `storyText:${unitKey}`,
             kind: "storyText",
             run: (signal) =>
               requestAgnesStory(
@@ -1190,11 +1199,9 @@ function App() {
                 { signal }
               )
           });
+          if (activeRunId && !isCurrentMediaRun(unitKey, activeRunId)) return;
           story = { ...story, generatedAt: Date.now(), promptVersion: STORY_TEXT_PROMPT_VERSION };
-          const packWithStory: LessonPack = { ...targetPack, storyText: story };
-          setPack(packWithStory);
-          await storage.saveLesson(packWithStory, unitKey);
-          targetPack = packWithStory;
+          saveStoryOnCurrentPack(unitKey, activeRunId, story);
         } catch {
           // Story is nice-to-have for the video; fall back to the word-list
           // prompt rather than blocking the reward entirely.
@@ -1401,8 +1408,8 @@ function App() {
     void ensureStoryScenes(pack);
   }, [pack, screen]);
 
-  // Reward auto-trigger: when the kid reaches the reward screen and we
-  // don't already have a usable video, run the story → video pipeline.
+  // Reward auto-trigger: once the lesson starts, run the story → video
+  // pipeline unless a usable video already exists.
   useEffect(() => {
     if (!canStartRewardPipeline({ screen, pack, hasApiKey, isVideoBusy, complete, video })) return;
     void runRewardPipeline(pack as LessonPack);
@@ -1448,6 +1455,11 @@ function App() {
     setActiveIndex((value) => Math.min(dashboardPack.words.length - 1, value + 1));
   }
 
+  function openParentControls() {
+    if (screen !== "setup") setSetupReturnScreen(screen);
+    setScreen("setup");
+  }
+
   const isLessonPicker = screen === "home";
   const busy = isGenerating || isVideoBusy;
   const visibleNotice = notice && !busy && !isOngoingNoticeText(notice) ? notice : "";
@@ -1459,7 +1471,7 @@ function App() {
         profile={profile}
         missionTitle={missionTitle}
         compact={isLessonPicker}
-        onSetup={() => setScreen("setup")}
+        onSetup={openParentControls}
       />
       <main className="main-stage">
         {screen === "setup" ? (
@@ -1485,7 +1497,7 @@ function App() {
               onDeleteVideo={deleteCachedVideo}
               isVideoBusy={isVideoBusy}
             />
-            <button className="secondary-button setup-back" onClick={() => setScreen("home")}>
+            <button className="secondary-button setup-back" onClick={() => setScreen(setupReturnScreen)}>
               Return to Learning
               <ArrowRight size={18} />
             </button>
@@ -1679,6 +1691,7 @@ function MissionDashboard({
 }) {
   const showLessonBoard = screen === "home";
   const showNoticeRow = Boolean(notice);
+  const practiceGaps = rewardPracticeGaps(mastery, pack.words);
   return (
     <section className="mission-dashboard" aria-label="Word Planet mission dashboard">
       {showNoticeRow && (
@@ -1709,6 +1722,7 @@ function MissionDashboard({
           <MissionStepper
             active={screen}
             complete={complete}
+            gaps={practiceGaps}
             missionReady={missionReady}
             video={video}
             onLesson={onHome}
@@ -1760,7 +1774,6 @@ function MissionDashboard({
               {screen === "reward" && (
                 <RewardInline
                   complete={complete}
-                  gaps={rewardPracticeGaps(mastery, pack.words)}
                   video={video}
                   onCreate={onCreateVideo}
                   onSummary={onRewardSummary}
@@ -2151,13 +2164,27 @@ function PictureGameInline({
   onAnswer: (word: WordEntry, correct: boolean) => void;
   onContinue: () => void;
 }) {
-  const target = pack.words[0];
+  const [gameIndex, setGameIndex] = useState(0);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const target = pack.words[Math.min(gameIndex, pack.words.length - 1)] ?? pack.words[0];
   const selectedCorrect = selectedId === target.id;
+  const isLastGame = gameIndex >= pack.words.length - 1;
+  const choices = pack.words.slice(0, 3).some((word) => word.id === target.id)
+    ? pack.words.slice(0, 3)
+    : [target, ...pack.words.filter((word) => word.id !== target.id).slice(0, 2)];
 
   function choose(word: WordEntry) {
     setSelectedId(word.id);
     onAnswer(target, word.id === target.id);
+  }
+
+  function advance() {
+    if (isLastGame) {
+      onContinue();
+      return;
+    }
+    setGameIndex((value) => Math.min(pack.words.length - 1, value + 1));
+    setSelectedId(null);
   }
 
   return (
@@ -2165,7 +2192,7 @@ function PictureGameInline({
       <div>
         <h3>Which one is a {target.word}?</h3>
         <div className="mini-choice-grid">
-          {pack.words.slice(0, 3).map((word, index) => (
+          {choices.map((word, index) => (
             <button className="picture-choice" key={word.id} onClick={() => choose(word)}>
               <img src={getWordImage(pack, word.id)} alt={`picture choice ${index + 1}`} />
               <span>Choice {index + 1}</span>
@@ -2176,9 +2203,9 @@ function PictureGameInline({
         {selectedId && (
           <p className="choice-feedback">{selectedCorrect ? "Nice picture match!" : "Good try. Look at the picture clue again."}</p>
         )}
-        <button className="primary-button" onClick={onContinue}>
-          Go to Spelling
-          <Pencil size={18} />
+        <button className="primary-button" onClick={advance}>
+          {isLastGame ? "Go to Spelling" : "Next game"}
+          {isLastGame ? <Pencil size={18} /> : <ArrowRight size={18} />}
         </button>
       </div>
     </div>
@@ -2297,20 +2324,14 @@ function SpellingInline({
             </button>
           ))}
         </div>
-        {feedback && (
+        {feedback?.kind === "retry" && (
           <div className={`spell-feedback ${feedback.kind}`} role="status" aria-live="polite">
-            <strong>{feedback.kind === "correct" ? `Great spelling: ${feedback.word}!` : "Try again"}</strong>
-            {feedback.kind === "retry" ? (
-              <>
-                <span>Your answer: {feedback.attempt || "(blank)"}</span>
-                <span>The word is {feedback.word}.</span>
-                <button className="secondary-button" type="button" onClick={clearAnswer}>
-                  Try again
-                </button>
-              </>
-            ) : (
-              <span>Your answer: {feedback.attempt}</span>
-            )}
+            <strong>Try again</strong>
+            <span>Your answer: {feedback.attempt || "(blank)"}</span>
+            <span>The word is {feedback.word}.</span>
+            <button className="secondary-button" type="button" onClick={clearAnswer}>
+              Try again
+            </button>
           </div>
         )}
         <div className="button-row spelling-actions">
@@ -2327,13 +2348,11 @@ function SpellingInline({
 
 function RewardInline({
   complete,
-  gaps,
   video,
   onCreate,
   onSummary
 }: {
   complete: boolean;
-  gaps: PracticeGap[];
   video: VideoTaskState;
   onCreate: () => void;
   onSummary: () => void;
@@ -2353,16 +2372,6 @@ function RewardInline({
           {inFlight && video.progress > 0 && (
             <progress className="video-progress" max={100} value={video.progress} aria-label="Reward video progress" />
           )}
-        </div>
-      )}
-      {!complete && gaps.length > 0 && (
-        <div className="reward-gap-panel">
-          <strong>Finish the missing practice below to unlock the video.</strong>
-          {gaps.map((gap) => (
-            <span key={gap.lane}>
-              {gap.label} {gap.completed}/{gap.total}: {gap.missingWords.join(", ")}
-            </span>
-          ))}
         </div>
       )}
       <div className="button-row centered">
@@ -2394,7 +2403,7 @@ function rewardStageCopy(video: VideoTaskState, complete: boolean): string {
     default:
       if (video.status === "completed" && !video.url && !video.blob) return "Sample reward ready";
       if (video.status === "failed") return video.error ?? "Reward video failed. Tap to try again.";
-      return complete ? "Video status: ready" : "Finish the missing practice below to unlock the video.";
+      return complete ? "Video status: ready" : "Complete the highlighted phases to unlock your reward.";
   }
 }
 
@@ -2403,6 +2412,7 @@ type MissionStepperItem = {
   label: string;
   icon: LucideIcon;
   completed: boolean;
+  progressLabel?: string;
   disabled?: boolean;
   onClick: () => void;
 };
@@ -2410,6 +2420,7 @@ type MissionStepperItem = {
 function MissionStepper({
   active,
   complete,
+  gaps,
   missionReady,
   video,
   onLesson,
@@ -2422,6 +2433,7 @@ function MissionStepper({
 }: {
   active: Screen;
   complete: boolean;
+  gaps: PracticeGap[];
   missionReady: boolean;
   video: VideoTaskState;
   onLesson: () => void;
@@ -2436,6 +2448,8 @@ function MissionStepper({
     active === "learn" || active === "story" || active === "game" || active === "spell" || active === "reward" || active === "summary"
       ? active
       : "lesson";
+  const meaningGap = gaps.find((gap) => gap.lane === "meaning");
+  const spellingGap = gaps.find((gap) => gap.lane === "write");
   const items: MissionStepperItem[] = [
     {
       id: "lesson",
@@ -2464,7 +2478,8 @@ function MissionStepper({
       id: "game",
       label: "Game",
       icon: Gamepad2,
-      completed: ["spell", "reward", "summary"].includes(active),
+      completed: ["spell", "reward", "summary"].includes(active) && !meaningGap,
+      progressLabel: meaningGap ? `${meaningGap.completed}/${meaningGap.total}` : undefined,
       disabled: !missionReady,
       onClick: onGame
     },
@@ -2472,7 +2487,8 @@ function MissionStepper({
       id: "spell",
       label: "Spell",
       icon: Pencil,
-      completed: ["reward", "summary"].includes(active),
+      completed: ["reward", "summary"].includes(active) && !spellingGap,
+      progressLabel: spellingGap ? `${spellingGap.completed}/${spellingGap.total}` : undefined,
       disabled: !missionReady,
       onClick: onSpell
     },
@@ -2502,7 +2518,7 @@ function MissionStepper({
         return (
           <button
             key={item.id}
-            className={`mission-stepper-item ${status}`}
+            className={`mission-stepper-item ${status} ${item.progressLabel ? "needs-practice" : ""}`}
             onClick={item.onClick}
             disabled={item.disabled}
             aria-current={item.id === activeStep ? "step" : undefined}
@@ -2511,6 +2527,7 @@ function MissionStepper({
             <Icon className="stepper-icon" />
             <span className="stepper-copy">
               <strong>{item.label}</strong>
+              {item.progressLabel && <small className="stepper-progress-badge">{item.progressLabel}</small>}
             </span>
           </button>
         );
