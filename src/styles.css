@@ -1873,6 +1873,11 @@ select:focus {
   object-fit: contain;
 }
 
+.inline-activity.game .picture-choice img {
+  background: linear-gradient(180deg, #f8fbff, #eef7ff);
+  object-fit: contain;
+}
+
 .inline-activity h3 {
   margin: 0 0 8px;
   color: #071b44;

@@ -91,6 +91,13 @@ describe("mission stepper layout", () => {
     expect(inlineImageRule).toMatch(/object-fit\s*:\s*cover/);
     expect(storyImageRule).toMatch(/object-fit\s*:\s*contain/);
   });
+
+  it("shows picture game choices without cropping generated art", () => {
+    const pictureChoiceRule =
+      css.match(/\.inline-activity\.game \.picture-choice img\s*{(?<body>[^}]*)}/s)?.groups?.body ?? "";
+
+    expect(pictureChoiceRule).toMatch(/object-fit\s*:\s*contain/);
+  });
 });
 
 describe("lesson picker cover layout", () => {
