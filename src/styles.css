@@ -2233,6 +2233,19 @@ video {
   }
 }
 
+@media (max-width: 1460px) {
+  .mission-stepper {
+    grid-template-columns: repeat(7, minmax(190px, 1fr));
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scrollbar-width: none;
+  }
+
+  .mission-stepper::-webkit-scrollbar {
+    display: none;
+  }
+}
+
 @media (max-width: 1180px) {
   .lesson-board {
     grid-template-columns: 1fr;
@@ -2241,9 +2254,46 @@ video {
   .lesson-detail-panel {
     align-self: stretch;
   }
+
+  .learning-hero {
+    grid-template-columns: 1fr;
+    max-height: none;
+  }
+
+  .picture-panel img {
+    height: auto;
+    min-height: 220px;
+    max-height: 34vh;
+    aspect-ratio: 16 / 9;
+  }
+
+  .mission-stepper {
+    grid-template-columns: repeat(7, minmax(170px, 1fr));
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scrollbar-width: none;
+  }
+
+  .mission-stepper::-webkit-scrollbar {
+    display: none;
+  }
 }
 
 @media (max-width: 1100px) {
+  .app-shell {
+    background:
+      radial-gradient(circle at 20% 6%, rgba(255, 255, 255, 0.9) 0 2px, transparent 4px),
+      radial-gradient(circle at 67% 3%, rgba(255, 255, 255, 0.72) 0 2px, transparent 4px),
+      linear-gradient(180deg, var(--dashboard-sky) 0 220px, #d8f4ff 220px 68%, var(--dashboard-grass) 100%);
+  }
+
+  .lesson-picker-shell {
+    background:
+      radial-gradient(circle at 29% 4%, rgba(255, 255, 255, 0.88) 0 3px, transparent 4px),
+      radial-gradient(circle at 67% 3%, rgba(255, 255, 255, 0.72) 0 2px, transparent 4px),
+      linear-gradient(180deg, var(--theme-top) 0 220px, #dff4ff 220px 100%);
+  }
+
   .top-bar {
     height: auto;
     grid-template-columns: 1fr;
@@ -2387,7 +2437,7 @@ video {
   }
 
   .mission-stepper {
-    grid-template-columns: repeat(7, minmax(0, 1fr));
+    grid-template-columns: repeat(7, minmax(108px, 1fr));
     gap: 6px;
   }
 
@@ -2441,6 +2491,141 @@ video {
 }
 
 @media (max-width: 560px) {
+  .top-bar,
+  .main-stage {
+    padding-left: 10px;
+    padding-right: 10px;
+  }
+
+  .top-bar {
+    gap: 10px;
+  }
+
+  .brand-mark {
+    gap: 8px;
+  }
+
+  .planet-face {
+    width: 46px;
+    height: 46px;
+    font-size: 25px;
+  }
+
+  .mission-pill {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 4px 8px;
+    padding: 10px 12px;
+    border-radius: 18px;
+  }
+
+  .mission-pill strong {
+    grid-column: 1 / -1;
+    font-size: 1.05rem;
+    white-space: normal;
+  }
+
+  .top-actions {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .lesson-picker-shell .top-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .star-pill,
+  .avatar-button {
+    width: 100%;
+    padding-left: 8px;
+    padding-right: 8px;
+  }
+
+  .main-stage {
+    padding-top: 14px;
+    padding-bottom: 14px;
+  }
+
+  .learning-hero,
+  .active-activity,
+  .setup-panel {
+    padding: 10px;
+    border-radius: 18px;
+  }
+
+  .picture-panel img {
+    min-height: 180px;
+    max-height: 34vh;
+    border-radius: 18px;
+  }
+
+  .word-focus-card {
+    min-height: 0;
+    border-radius: 18px;
+    padding: 18px 10px;
+  }
+
+  .word-progress-toolbar {
+    min-height: 48px;
+    margin-bottom: 2px;
+  }
+
+  .word-progress-toolbar span {
+    min-width: 96px;
+    min-height: 48px;
+  }
+
+  .audio-orb {
+    width: 68px;
+    height: 68px;
+  }
+
+  .audio-orb svg {
+    width: 38px;
+    height: 38px;
+  }
+
+  .sentence-box {
+    grid-template-columns: 1fr;
+    text-align: center;
+    padding: 12px;
+  }
+
+  .sentence-box small,
+  .mini-sound {
+    grid-column: 1;
+    grid-row: auto;
+    justify-self: center;
+  }
+
+  .button-row {
+    display: grid;
+    grid-template-columns: 1fr;
+    align-items: stretch;
+  }
+
+  .button-row > button,
+  .button-row > .primary-button,
+  .button-row > .secondary-button,
+  .button-row > .finish-button {
+    width: 100%;
+  }
+
+  .setup-card,
+  .home-screen,
+  .activity-screen,
+  .spell-screen,
+  .reward-screen,
+  .summary-screen {
+    padding: 14px;
+  }
+
+  .cache-stat-grid,
+  .cache-preview-grid,
+  .parent-action-row {
+    grid-template-columns: 1fr;
+  }
+
   .lesson-board-header {
     display: grid;
   }
@@ -2469,7 +2654,7 @@ video {
   }
 
   .mission-stepper {
-    grid-template-columns: repeat(7, minmax(76px, 1fr));
+    grid-template-columns: repeat(7, minmax(84px, 1fr));
     overflow-x: auto;
     overscroll-behavior-x: contain;
     scrollbar-width: none;

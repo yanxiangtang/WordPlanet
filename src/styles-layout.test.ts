@@ -138,3 +138,28 @@ describe("lesson picker cover layout", () => {
     expect(css).toMatch(/@media\s*\(max-width:\s*560px\)[\s\S]*\.lesson-style-row\s+\.link-button\s*{[\s\S]*grid-column\s*:\s*1[\s\S]*grid-row\s*:\s*auto[\s\S]*justify-self\s*:\s*start/);
   });
 });
+
+describe("responsive learning layout", () => {
+  it("extends the tablet sky band behind the wrapped top bar", () => {
+    expect(css).toMatch(/@media\s*\(max-width:\s*1100px\)[\s\S]*\.app-shell\s*{[\s\S]*var\(--dashboard-sky\)\s+0\s+220px/);
+    expect(css).toMatch(/@media\s*\(max-width:\s*1100px\)[\s\S]*\.lesson-picker-shell\s*{[\s\S]*var\(--theme-top\)\s+0\s+220px/);
+  });
+
+  it("collapses the learning hero and stepper for iPad widths", () => {
+    expect(css).toMatch(/@media\s*\(max-width:\s*1460px\)[\s\S]*\.mission-stepper\s*{[\s\S]*grid-template-columns\s*:\s*repeat\(7,\s*minmax\(190px,\s*1fr\)\)/);
+    expect(css).toMatch(/@media\s*\(max-width:\s*1460px\)[\s\S]*\.mission-stepper\s*{[\s\S]*overflow-x\s*:\s*auto/);
+    expect(css).toMatch(/@media\s*\(max-width:\s*1180px\)[\s\S]*\.learning-hero\s*{[\s\S]*grid-template-columns\s*:\s*1fr/);
+    expect(css).toMatch(/@media\s*\(max-width:\s*1180px\)[\s\S]*\.mission-stepper\s*{[\s\S]*grid-template-columns\s*:\s*repeat\(7,\s*minmax\(170px,\s*1fr\)\)/);
+    expect(css).toMatch(/@media\s*\(max-width:\s*1180px\)[\s\S]*\.mission-stepper\s*{[\s\S]*overflow-x\s*:\s*auto/);
+    expect(css).toMatch(/@media\s*\(max-width:\s*1180px\)[\s\S]*\.picture-panel img\s*{[\s\S]*max-height\s*:\s*34vh/);
+  });
+
+  it("uses compact phone sizing for app chrome and learning cards", () => {
+    expect(css).toMatch(/@media\s*\(max-width:\s*560px\)[\s\S]*\.top-bar,\s*\.main-stage\s*{[\s\S]*padding-left\s*:\s*10px/);
+    expect(css).toMatch(/@media\s*\(max-width:\s*560px\)[\s\S]*\.mission-pill\s*{[\s\S]*grid-template-columns\s*:\s*auto\s+minmax\(0,\s*1fr\)/);
+    expect(css).toMatch(/@media\s*\(max-width:\s*560px\)[\s\S]*\.mission-pill strong\s*{[\s\S]*grid-column\s*:\s*1\s*\/\s*-1/);
+    expect(css).toMatch(/@media\s*\(max-width:\s*560px\)[\s\S]*\.lesson-picker-shell\s+\.top-actions\s*{[\s\S]*grid-template-columns\s*:\s*1fr/);
+    expect(css).toMatch(/@media\s*\(max-width:\s*560px\)[\s\S]*\.word-focus-card\s*{[\s\S]*min-height\s*:\s*0/);
+    expect(css).toMatch(/@media\s*\(max-width:\s*560px\)[\s\S]*\.button-row\s*{[\s\S]*display\s*:\s*grid[\s\S]*grid-template-columns\s*:\s*1fr/);
+  });
+});
