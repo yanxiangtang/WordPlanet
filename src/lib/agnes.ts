@@ -370,9 +370,10 @@ export async function createAgnesVideoTask(
 
   if (!response.ok) throw new HttpAgnesError(`Agnes video request failed: ${response.status}`, response.status);
   const payload = (await response.json()) as { video_id?: string; task_id?: string; id?: string; status?: string; progress?: number };
+  const asyncId = payload.video_id ?? payload.task_id ?? payload.id;
 
   return {
-    videoId: payload.video_id,
+    videoId: asyncId,
     taskId: payload.task_id ?? payload.id,
     status: payload.status === "completed" ? "completed" : payload.status === "failed" ? "failed" : "queued",
     progress: payload.progress ?? 0

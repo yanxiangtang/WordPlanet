@@ -7,6 +7,7 @@ import {
   buildImageGenerationRequest,
   buildUnitCoverPrompt,
   buildVideoTaskRequest,
+  createAgnesVideoTask,
   extractVideoResultUrl,
   imagePromptForWord,
   normalizeAgnesBaseUrl,
@@ -85,6 +86,30 @@ describe("Agnes API helpers", () => {
     });
 
     expect(body).not.toHaveProperty("image");
+  });
+
+  it("uses Agnes async task ids as video ids when create does not return video_id", async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async () =>
+      new Response(JSON.stringify({ task_id: "task_123", status: "queued", progress: 0 }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" }
+      });
+
+    try {
+      const result = await createAgnesVideoTask({
+        apiKey: "agnes-key",
+        baseUrl: "https://apihub.agnes-ai.com",
+        imageModel: "agnes-image-2.1-flash",
+        videoModel: "agnes-video-v2.0",
+        textModel: "agnes-2.0-flash"
+      }, "a child-safe reward video");
+
+      expect(result.videoId).toBe("task_123");
+      expect(result.taskId).toBe("task_123");
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   });
 
   it("extracts the completed video URL from Agnes poll responses", () => {
