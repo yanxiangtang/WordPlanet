@@ -2,7 +2,7 @@ import { act, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { selectMissionWords } from "./data/vocabulary";
-import { buildSampleLessonPack } from "./lib/lesson";
+import { buildPendingAgnesLessonPack, buildSampleLessonPack } from "./lib/lesson";
 import { createEmptyMastery, recordMasteryResult } from "./lib/mastery";
 import { defaultParentControlSettings, defaultProfile, defaultSettings, defaultVocabularySelection, storage } from "./lib/storage";
 import App, { canStartRewardPipeline, LessonBoard, Notice, ParentControlScreen, SummaryScreen } from "./App";
@@ -829,6 +829,43 @@ describe("kid lesson board", () => {
     expect(mount.querySelector<HTMLElement>(".mission-stepper-item.active")?.textContent).toContain("Game");
   });
 
+  it("shuffles picture game choices so the first option is not always correct", async () => {
+    const mount = document.createElement("div");
+    container = mount;
+    document.body.append(mount);
+    root = createRoot(mount);
+
+    await act(async () => {
+      root?.render(<App />);
+      await Promise.resolve();
+    });
+
+    const sample = Array.from(mount.querySelectorAll<HTMLButtonElement>("button")).find((button) =>
+      button.textContent?.includes("Use Sample Mission")
+    );
+
+    await act(async () => {
+      sample?.click();
+      await Promise.resolve();
+    });
+
+    const gameStep = Array.from(mount.querySelectorAll<HTMLButtonElement>(".mission-stepper-item")).find((button) =>
+      button.textContent?.includes("Game")
+    );
+
+    await act(async () => {
+      gameStep?.click();
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      mount.querySelector<HTMLButtonElement>(".inline-activity.game .picture-choice")?.click();
+      await Promise.resolve();
+    });
+
+    expect(mount.querySelector<HTMLElement>(".choice-feedback")?.textContent).toContain("Good try");
+  });
+
   it("shows a Style for this unit row with a Change action on the lesson detail", async () => {
     const mount = document.createElement("div");
     container = mount;
@@ -1088,6 +1125,34 @@ describe("non-blocking Agnes unit media generation", () => {
     expect(calls.videos).toBeGreaterThan(0);
   });
 
+  it("restarts stale in-flight reward video state after reload", async () => {
+    saveApiSettings();
+    const { calls } = installFetchMock();
+    const words = selectMissionWords("yilin-grade3", "3A", 5, 1);
+    const storedPack = buildPendingAgnesLessonPack(words, { setId: "yilin-grade3-3A-unit-1", title: "Book 3A · Unit 1" }, { id: "auto" });
+    vi.spyOn(storage, "getLesson").mockResolvedValue(storedPack);
+    vi.spyOn(storage, "getMastery").mockResolvedValue(createEmptyMastery(words.map((word) => word.id)));
+    vi.spyOn(storage, "getVideo").mockResolvedValue({ status: "running", stage: "rendering", progress: 40, videoId: "stale-video" });
+    vi.spyOn(storage, "getLearningPageState").mockResolvedValue({ screen: "learn", activeIndex: 0, spellInput: "" });
+    vi.spyOn(storage, "getUnitCover").mockResolvedValue(undefined);
+    vi.spyOn(storage, "getUnitStyle").mockResolvedValue({ styleId: "auto", chosenAt: Date.now() });
+
+    const mount = document.createElement("div");
+    container = mount;
+    document.body.append(mount);
+    root = createRoot(mount);
+
+    await act(async () => {
+      root?.render(<App />);
+      await flushAsyncWork(80);
+    });
+
+    expect(mount.querySelector(".word-focus-card")).not.toBeNull();
+    expect(mount.textContent).not.toContain("Sample mission is ready");
+    expect(calls.storyText).toBeGreaterThan(0);
+    expect(calls.videos).toBeGreaterThan(0);
+  });
+
   it("streams completed word images into the already-open lesson", async () => {
     saveApiSettings();
     const { firstWordImage } = installFetchMock();
@@ -1204,6 +1269,28 @@ describe("reward pipeline gating", () => {
         video: idleVideo
       })
     ).toBe(true);
+
+    expect(
+      canStartRewardPipeline({
+        screen: "learn",
+        pack,
+        hasApiKey: true,
+        isVideoBusy: false,
+        complete: false,
+        video: { status: "running", stage: "rendering", progress: 40, videoId: "stale-video" }
+      })
+    ).toBe(true);
+
+    expect(
+      canStartRewardPipeline({
+        screen: "learn",
+        pack,
+        hasApiKey: true,
+        isVideoBusy: true,
+        complete: false,
+        video: { status: "running", stage: "rendering", progress: 40, videoId: "active-video" }
+      })
+    ).toBe(false);
 
     expect(
       canStartRewardPipeline({

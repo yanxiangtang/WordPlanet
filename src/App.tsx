@@ -129,7 +129,7 @@ function masteryMatchesWords(mastery: MissionMastery | undefined, words: WordEnt
 }
 
 function needsRewardVideoState(video: VideoTaskState): boolean {
-  return video.status === "idle" || (video.status === "completed" && !isRewardVideoReady(video));
+  return video.status === "idle" || isRewardVideoInFlight(video) || (video.status === "completed" && !isRewardVideoReady(video));
 }
 
 function isRewardVideoReady(video: VideoTaskState): boolean {
@@ -172,6 +172,26 @@ function writeScreenToUrl(screen: Screen): void {
 
 function isOngoingNoticeText(text: string): boolean {
   return /^(Loading|Asking|Downloading|Redrawing|Writing|Drawing|Almost ready)/.test(text);
+}
+
+function hashString(seed: string): number {
+  let hash = 2166136261;
+  for (let i = 0; i < seed.length; i += 1) {
+    hash ^= seed.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return hash >>> 0;
+}
+
+function seededShuffle<T>(items: T[], seed: string): T[] {
+  const shuffled = [...items];
+  let state = hashString(seed) || 1;
+  for (let index = shuffled.length - 1; index > 0; index -= 1) {
+    state = Math.imul(state ^ (state >>> 15), 2246822519) >>> 0;
+    const swapIndex = state % (index + 1);
+    [shuffled[index], shuffled[swapIndex]] = [shuffled[swapIndex], shuffled[index]];
+  }
+  return shuffled;
 }
 
 // Wait a fixed number of milliseconds; used to pace the parent-side video
@@ -374,7 +394,11 @@ function App() {
       }
       if (masteryMatchesWords(storedMastery, words)) setMastery(storedMastery);
       if (storedVideo) {
-        if (storedVideo.blob) {
+        if (isRewardVideoInFlight(storedVideo)) {
+          const idleVideo: VideoTaskState = { status: "idle", progress: 0 };
+          setVideo(idleVideo);
+          void storage.saveVideo(idleVideo, key);
+        } else if (storedVideo.blob) {
           const objUrl = URL.createObjectURL(storedVideo.blob);
           replaceVideoUrl(objUrl);
           setVideo({ ...storedVideo, url: objUrl });
@@ -2169,9 +2193,16 @@ function PictureGameInline({
   const target = pack.words[Math.min(gameIndex, pack.words.length - 1)] ?? pack.words[0];
   const selectedCorrect = selectedId === target.id;
   const isLastGame = gameIndex >= pack.words.length - 1;
-  const choices = pack.words.slice(0, 3).some((word) => word.id === target.id)
-    ? pack.words.slice(0, 3)
-    : [target, ...pack.words.filter((word) => word.id !== target.id).slice(0, 2)];
+  const choices = useMemo(() => {
+    const baseChoices = pack.words.slice(0, 3).some((word) => word.id === target.id)
+      ? pack.words.slice(0, 3)
+      : [target, ...pack.words.filter((word) => word.id !== target.id).slice(0, 2)];
+    const shuffled = seededShuffle(baseChoices, `${pack.id}:${target.id}:${gameIndex}`);
+    if (shuffled.length > 1 && shuffled[0]?.id === target.id) {
+      return [...shuffled.slice(1), shuffled[0]];
+    }
+    return shuffled;
+  }, [gameIndex, pack.id, pack.words, target.id]);
 
   function choose(word: WordEntry) {
     setSelectedId(word.id);
