@@ -60,7 +60,7 @@ function deriveWordEntry(setId: string, bookId: string, raw: RawWord, idSuffix: 
     level: "A1 Movers" as WordLevel,
     example: "",
     exampleZh: "",
-    imagePromptHint: `a child-friendly illustration of ${raw.word}`,
+    imagePromptHint: `a child-friendly visual clue for the Chinese meaning ${raw.meaning}, shown as a concrete ${raw.type} scene`,
     spellingDifficulty: spellingDifficultyFor(raw.word),
     pronunciationNote: "Listen, then repeat clearly."
   };

@@ -163,6 +163,9 @@ describe("Agnes API helpers", () => {
     expect(prompt).toMatch(/silly action/i);
     expect(prompt).toMatch(/abstract word or phrase/i);
     expect(prompt).toMatch(/Do not write the English word/i);
+    expect(prompt).toMatch(/No fake text/i);
+    expect(prompt).toMatch(/garbled/i);
+    expect(prompt).toMatch(/letter-like/i);
     expect(prompt).toMatch(/no readable text/i);
     expect(prompt).toMatch(/letters, captions, labels, signs/i);
   });

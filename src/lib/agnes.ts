@@ -136,12 +136,13 @@ export function imagePromptForWord(word: WordEntry, style: string = CHILD_ART_ST
     "Make this word picture visually different from nearby cards: choose a specific subject, camera angle, pose, and background gag.",
     "Not photorealistic, no realistic photo look, no live-action — always illustrated and cartoonish.",
     "Do not write the English word, Chinese meaning, spelling letters, or phonics in the image.",
-    "No readable text anywhere: no letters, captions, labels, signs, handwriting, book text, screen text, board text, posters, watermark, or private information.",
-    "If the scene includes a board, book, paper, screen, poster, or sign, keep it blank or use simple unreadable shapes only."
+    "No fake text, garbled text, pseudo-writing, letter-like marks, alphabet shapes; no letters, captions, labels, signs, handwriting, book text, screen text, board text, posters, watermark, or private information.",
+    "No readable text anywhere, and no unreadable decorative scribbles that resemble letters or words.",
+    "If the scene includes a board, book, paper, screen, poster, or sign, keep it completely blank with no marks."
   ].join(" ");
 }
 
-export const UNIT_COVER_PROMPT_VERSION = 2;
+export const UNIT_COVER_PROMPT_VERSION = 3;
 
 export function buildUnitCoverPrompt(
   unit: Pick<VocabularyUnit, "unitNumber" | "title">,
@@ -161,8 +162,8 @@ export function buildUnitCoverPrompt(
     "Create one cohesive silly-action cartoon scene that suggests the lesson theme without spelling any vocabulary word.",
     "Give different visual jobs to the vocabulary concepts: one main action, one funny reaction, one background prop, and one surprise detail.",
     "Bright, warm, friendly, school-age child audience, playful educational app cover, simple readable composition with varied characters and props.",
-    "No readable text anywhere: no English words, no Chinese characters, no letters, no captions, no labels, no signs, no handwriting, no book text, no screen text, no watermark.",
-    "If the scene includes a book, paper, board, sign, poster, or screen, keep it blank or use unreadable decorative shapes only.",
+    "No readable text anywhere: no fake text, garbled text, pseudo-writing, letter-like marks, English words, Chinese characters; no letters, captions, labels, signs, handwriting, book text, screen text, and no watermark.",
+    "If the scene includes a book, paper, board, sign, poster, or screen, keep it completely blank with no marks.",
     "Not photorealistic, no live-action, no scary content, no private information."
   ].join(" ");
 }
@@ -566,8 +567,9 @@ export function buildStoryScenePrompt(
     "Keep each scene composition different from the others: vary camera distance, pose, main prop, and background action.",
     "Bright, friendly, non-scary, made for school-age children who love cartoons.",
     "Not photorealistic, no realistic photo look, no live-action — always illustrated and cartoonish.",
-    "No readable text anywhere: no English words, no Chinese characters, no letters, captions, labels, signs, handwriting, book text, screen text, board text, posters, watermark, or private information.",
-    "If the scene includes a book, paper, board, sign, poster, or screen, keep it blank or use simple unreadable shapes only."
+    "No fake text, garbled text, pseudo-writing, letter-like marks, English words, Chinese characters; no letters, captions, labels, signs, handwriting, book text, screen text, board text, posters, watermark, or private information.",
+    "No readable text anywhere, and no unreadable decorative scribbles that resemble letters or words.",
+    "If the scene includes a book, paper, board, sign, poster, or screen, keep it completely blank with no marks."
   ]
     .filter(Boolean)
     .join(" ");
