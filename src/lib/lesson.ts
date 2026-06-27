@@ -1,7 +1,7 @@
 import { imagePromptForWord, requestAgnesExamples, requestAgnesImage, type WordExample } from "./agnes";
 import type { AgnesSettings, LessonPack, StoryScene, WordEntry } from "../types";
 
-export const TEXT_FREE_ASSET_VERSION = 7;
+export const TEXT_FREE_ASSET_VERSION = 8;
 
 const palette = ["#dbeafe", "#dcfce7", "#fef3c7", "#ffe4e6", "#ede9fe"];
 

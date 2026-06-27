@@ -30,6 +30,8 @@ describe("JSON vocabulary sets", () => {
     expect(new Set(ids).size).toBe(ids.length);
 
     expect(words.every((word) => word.imagePromptHint.length > 0)).toBe(true);
+    expect(words.every((word) => word.wordType.length > 0)).toBe(true);
+    expect(words[0].wordType).toBe("phrase");
     expect(words.every((word) => ["easy", "medium", "tricky"].includes(word.spellingDifficulty))).toBe(true);
     expect(words.every((word) => word.topic === "yilin-grade3")).toBe(true);
     expect(words.every((word) => word.example === "")).toBe(true);

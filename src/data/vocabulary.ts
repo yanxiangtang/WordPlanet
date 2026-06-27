@@ -55,6 +55,7 @@ function deriveWordEntry(setId: string, bookId: string, raw: RawWord, idSuffix: 
     id: `${setId}-${bookId}-${idSuffix}`,
     word: raw.word,
     meaningZh: raw.meaning,
+    wordType: raw.type,
     topic: setId,
     level: "A1 Movers" as WordLevel,
     example: "",

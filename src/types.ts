@@ -6,6 +6,7 @@ export type WordEntry = {
   id: string;
   word: string;
   meaningZh: string;
+  wordType: string;
   topic: string;
   level: WordLevel;
   example: string;
@@ -181,6 +182,10 @@ export type VideoTaskState = {
   taskId?: string;
   status: "idle" | "queued" | "running" | "completed" | "failed";
   progress: number;
+  // Prompt version that produced this video. Missing/older versions are stale
+  // and should be regenerated because video prompts are cached separately from
+  // lesson image/story prompts.
+  promptVersion?: number;
   // Multi-stage progress label for the reward pipeline. "writing-story" runs
   // the LLM story call; "creating-task" submits the Agnes video task;
   // "rendering" is the polling loop; "downloading" pulls the finished CDN

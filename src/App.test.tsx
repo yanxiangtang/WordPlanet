@@ -3,6 +3,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { selectMissionWords } from "./data/vocabulary";
 import { buildPendingAgnesLessonPack, buildSampleLessonPack } from "./lib/lesson";
+import { REWARD_VIDEO_PROMPT_VERSION } from "./lib/agnes";
 import { createEmptyMastery, recordMasteryResult } from "./lib/mastery";
 import { defaultParentControlSettings, defaultProfile, defaultSettings, defaultVocabularySelection, storage } from "./lib/storage";
 import App, { canStartRewardPipeline, LessonBoard, Notice, ParentControlScreen, SummaryScreen } from "./App";
@@ -1299,9 +1300,30 @@ describe("reward pipeline gating", () => {
         hasApiKey: true,
         isVideoBusy: false,
         complete: false,
-        video: { status: "completed", progress: 100, blob: new Blob(["video"], { type: "video/mp4" }) }
+        video: {
+          status: "completed",
+          progress: 100,
+          promptVersion: REWARD_VIDEO_PROMPT_VERSION,
+          blob: new Blob(["video"], { type: "video/mp4" })
+        }
       })
     ).toBe(false);
+
+    expect(
+      canStartRewardPipeline({
+        screen: "reward",
+        pack,
+        hasApiKey: true,
+        isVideoBusy: false,
+        complete: false,
+        video: {
+          status: "completed",
+          progress: 100,
+          promptVersion: REWARD_VIDEO_PROMPT_VERSION - 1,
+          blob: new Blob(["old video"], { type: "video/mp4" })
+        }
+      })
+    ).toBe(true);
 
     expect(
       canStartRewardPipeline({
@@ -1373,6 +1395,7 @@ describe("parent cached media controls", () => {
     const video: VideoTaskState = {
       status: "completed",
       progress: 100,
+      promptVersion: REWARD_VIDEO_PROMPT_VERSION,
       url: "https://example.com/reward.mp4"
     };
     const mount = document.createElement("div");

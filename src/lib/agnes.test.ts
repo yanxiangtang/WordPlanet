@@ -12,7 +12,9 @@ import {
   imagePromptForWord,
   normalizeAgnesBaseUrl,
   parseExampleResponse,
-  pollAgnesVideo
+  pollAgnesVideo,
+  REWARD_VIDEO_PROMPT_VERSION,
+  videoRewardPromptFromStory
 } from "./agnes";
 import { selectMissionWords } from "../data/vocabulary";
 
@@ -63,7 +65,7 @@ describe("Agnes API helpers", () => {
     expect(body).toEqual({
       model: "agnes-video-v2.0",
       prompt: "a child-safe library reward scene",
-      num_frames: 121,
+      num_frames: 241,
       frame_rate: 24
     });
   });
@@ -154,6 +156,12 @@ describe("Agnes API helpers", () => {
     const prompt = imagePromptForWord(word);
 
     expect(prompt).not.toContain(`word "${word.word}"`);
+    expect(prompt).toContain(`Target concept: ${word.word}`);
+    expect(prompt).toContain(`Chinese meaning for exact visual sense: ${word.meaningZh}`);
+    expect(prompt).toContain(`Vocabulary type: ${word.wordType}`);
+    expect(prompt).toMatch(/one unmistakable visual clue/i);
+    expect(prompt).toMatch(/silly action/i);
+    expect(prompt).toMatch(/abstract word or phrase/i);
     expect(prompt).toMatch(/Do not write the English word/i);
     expect(prompt).toMatch(/no readable text/i);
     expect(prompt).toMatch(/letters, captions, labels, signs/i);
@@ -181,6 +189,8 @@ describe("Agnes API helpers", () => {
     expect(prompt).toContain(words[0].word);
     expect(prompt).toContain(words[1].word);
     expect(prompt).toContain(`Art style: ${descriptor}.`);
+    expect(prompt).toMatch(/cohesive silly-action cartoon/i);
+    expect(prompt).toMatch(/different visual jobs/i);
     expect(prompt).toMatch(/child-safe/i);
     expect(prompt).toMatch(/No readable text/i);
     expect(prompt).toMatch(/no letters/i);
@@ -247,6 +257,27 @@ describe("Agnes API helpers", () => {
       { word: "apple", example: "I eat an apple.", exampleZh: "我吃一个苹果。" },
       { word: "run", example: "We run in the park.", exampleZh: "我们在公园里跑。" }
     ]);
+  });
+
+  it("builds a 10-second funny reward video prompt from the story", () => {
+    const prompt = videoRewardPromptFromStory({
+      text: "Momo opens the gate. A cat jumps into a big hat. They laugh under the sun.",
+      textZh: "Momo 打开大门。一只猫跳进大帽子。他们在太阳下笑。",
+      sentences: [
+        { en: "Momo opens the gate.", zh: "Momo 打开大门。", title: "Gate" },
+        { en: "A cat jumps into a big hat.", zh: "一只猫跳进大帽子。", title: "Hat Jump" },
+        { en: "They laugh under the sun.", zh: "他们在太阳下笑。", title: "Sunny Laugh" }
+      ],
+      generatedAt: 0,
+      promptVersion: 1
+    });
+
+    expect(REWARD_VIDEO_PROMPT_VERSION).toBeGreaterThan(1);
+    expect(prompt).toMatch(/10-second/i);
+    expect(prompt).toMatch(/beginning/i);
+    expect(prompt).toMatch(/funny escalation/i);
+    expect(prompt).toMatch(/payoff/i);
+    expect(prompt).toMatch(/no text overlays/i);
   });
 
   it("also accepts a bare top-level array and drops rows missing fields", () => {

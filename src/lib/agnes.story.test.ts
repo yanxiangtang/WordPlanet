@@ -27,6 +27,10 @@ describe("Agnes story helpers", () => {
     ]);
 
     expect(prompt.system).toMatch(/8-10/);
+    expect(prompt.system).toMatch(/silly-action/i);
+    expect(prompt.system).toMatch(/setup/i);
+    expect(prompt.system).toMatch(/surprise visual gag/i);
+    expect(prompt.system).toMatch(/payoff/i);
     expect(prompt.system).toMatch(/Output JSON only/i);
     expect(prompt.user).toContain("1. gate — 大门");
     expect(prompt.user).toContain("2. cat — 小猫");
@@ -86,6 +90,8 @@ describe("Agnes story helpers", () => {
     const prompt = buildStoryScenePrompt(SAMPLE_STORY.sentences[0], "Pixar style", words);
     expect(prompt).toContain(SAMPLE_STORY.sentences[0].en);
     expect(prompt).toContain("Art style: Pixar style");
+    expect(prompt).toMatch(/distinct funny action beat/i);
+    expect(prompt).toMatch(/specific visual gag/i);
     expect(prompt).toMatch(/No readable text/i);
     expect(prompt).toMatch(/no letters/i);
     expect(prompt).toContain(words[0].word);

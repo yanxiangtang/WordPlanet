@@ -32,6 +32,7 @@ import {
   fetchAgnesVideoBlob,
   imagePromptForWord,
   pollAgnesVideo,
+  REWARD_VIDEO_PROMPT_VERSION,
   requestAgnesImage,
   requestAgnesStory,
   STORY_TEXT_PROMPT_VERSION,
@@ -133,11 +134,15 @@ function needsRewardVideoState(video: VideoTaskState): boolean {
 }
 
 function isRewardVideoReady(video: VideoTaskState): boolean {
-  return video.status === "completed" && !video.stage && Boolean(video.blob || video.url);
+  return video.status === "completed" && !video.stage && video.promptVersion === REWARD_VIDEO_PROMPT_VERSION && Boolean(video.blob || video.url);
 }
 
 function isRewardVideoInFlight(video: VideoTaskState): boolean {
   return video.status === "queued" || video.status === "running" || Boolean(video.stage);
+}
+
+function freshStory(story: StoryText | undefined): StoryText | undefined {
+  return story?.promptVersion === STORY_TEXT_PROMPT_VERSION ? story : undefined;
 }
 
 export function canStartRewardPipeline({
@@ -893,7 +898,7 @@ function App() {
     if (storySceneGenerationRef.current.has(storyKey)) return;
     storySceneGenerationRef.current.add(storyKey);
     try {
-      let story = targetPack.storyText;
+      let story = freshStory(targetPack.storyText);
       if (!story) {
         story = await scheduler.enqueue({
           id: `storyText:${unitKey}:${runId}`,
@@ -1209,7 +1214,7 @@ function App() {
       // ----- 1. Story text -----
       setVideo({ status: "running", stage: "writing-story", progress: 5 });
       setNotice("Writing your reward story…");
-      let story: StoryText | undefined = targetPack.storyText;
+      let story: StoryText | undefined = freshStory(targetPack.storyText);
       if (!story) {
         const activeRunId = activeMediaRunIdForUnit(unitKey);
         try {
@@ -1247,7 +1252,7 @@ function App() {
       });
       if (token.cancelled) return;
 
-      const queued: VideoTaskState = { ...task, stage: "creating-task", blob: undefined, url: undefined };
+      const queued: VideoTaskState = { ...task, promptVersion: REWARD_VIDEO_PROMPT_VERSION, stage: "creating-task", blob: undefined, url: undefined };
       setVideo(queued);
       await storage.saveVideo(queued, unitKey);
 
@@ -1271,7 +1276,7 @@ function App() {
 
         if (next.status === "completed" && next.url) {
           // ----- 4. Download bytes -----
-          setVideo({ ...next, stage: "downloading", progress: 90 });
+          setVideo({ ...next, promptVersion: REWARD_VIDEO_PROMPT_VERSION, stage: "downloading", progress: 90 });
           setNotice("Almost ready — downloading your video…");
           try {
             const blob = await scheduler.enqueue({
@@ -1282,14 +1287,14 @@ function App() {
             if (token.cancelled) return;
             const objUrl = URL.createObjectURL(blob);
             replaceVideoUrl(objUrl);
-            const final: VideoTaskState = { ...next, stage: undefined, blob, url: objUrl, progress: 100 };
+            const final: VideoTaskState = { ...next, promptVersion: REWARD_VIDEO_PROMPT_VERSION, stage: undefined, blob, url: objUrl, progress: 100 };
             setVideo(final);
             await storage.saveVideo(final, unitKey);
             await refreshUnitSummaries();
             setNotice("Reward video cached.");
           } catch {
             if (token.cancelled) return;
-            const final: VideoTaskState = { ...next, stage: undefined, blob: undefined, progress: 100 };
+            const final: VideoTaskState = { ...next, promptVersion: REWARD_VIDEO_PROMPT_VERSION, stage: undefined, blob: undefined, progress: 100 };
             replaceVideoUrl(null);
             setVideo(final);
             await storage.saveVideo(final, unitKey);
@@ -1306,7 +1311,7 @@ function App() {
           return;
         }
         // Still running — surface progress without keeping a stale URL.
-        setVideo({ ...next, stage: "rendering", blob: undefined, url: undefined });
+        setVideo({ ...next, promptVersion: REWARD_VIDEO_PROMPT_VERSION, stage: "rendering", blob: undefined, url: undefined });
       }
     } catch (error) {
       if (!token.cancelled) {
@@ -1336,7 +1341,7 @@ function App() {
     if (storySceneGenerationRef.current.has(storyKey)) return;
     storySceneGenerationRef.current.add(storyKey);
     try {
-      let story = targetPack.storyText;
+      let story = freshStory(targetPack.storyText);
       if (!story) {
         story = await scheduler.enqueue({
           id: `storyText:${unitKey}`,

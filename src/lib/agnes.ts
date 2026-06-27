@@ -75,7 +75,7 @@ export function buildVideoTaskRequest(params: VideoTaskParams) {
     model: params.model,
     prompt: params.prompt,
     ...(image ? { image } : {}),
-    num_frames: 121,
+    num_frames: 241,
     frame_rate: 24
   };
 }
@@ -128,10 +128,12 @@ export function pickArtStyle(seed: string): string {
 export function imagePromptForWord(word: WordEntry, style: string = CHILD_ART_STYLES[0]): string {
   return [
     "Child-safe English vocabulary picture clue for a Chinese-speaking learner.",
-    `Target concept: ${word.word}. Chinese meaning for context: ${word.meaningZh}. This concept is metadata for choosing the visual subject only, never visible writing.`,
-    `Show only the visual scene or object: ${word.imagePromptHint}.`,
+    `Target concept: ${word.word}. Chinese meaning for exact visual sense: ${word.meaningZh}. Vocabulary type: ${word.wordType}. These are metadata for choosing the visual subject only, never visible writing.`,
+    `Show one unmistakable visual clue for this exact meaning: ${word.imagePromptHint}.`,
+    "If the target is an abstract word or phrase, turn it into a concrete mini-scene with expressive characters acting out the meaning.",
     `Art style: ${style}.`,
-    "Bright, friendly, non-scary, made for school-age children who love cartoons.",
+    "Use silly action, big readable expressions, and playful props so school-age kids immediately want to look at it.",
+    "Make this word picture visually different from nearby cards: choose a specific subject, camera angle, pose, and background gag.",
     "Not photorealistic, no realistic photo look, no live-action — always illustrated and cartoonish.",
     "Do not write the English word, Chinese meaning, spelling letters, or phonics in the image.",
     "No readable text anywhere: no letters, captions, labels, signs, handwriting, book text, screen text, board text, posters, watermark, or private information.",
@@ -139,16 +141,16 @@ export function imagePromptForWord(word: WordEntry, style: string = CHILD_ART_ST
   ].join(" ");
 }
 
-export const UNIT_COVER_PROMPT_VERSION = 1;
+export const UNIT_COVER_PROMPT_VERSION = 2;
 
 export function buildUnitCoverPrompt(
   unit: Pick<VocabularyUnit, "unitNumber" | "title">,
-  words: Pick<WordEntry, "word" | "meaningZh" | "imagePromptHint">[],
+  words: Pick<WordEntry, "word" | "meaningZh" | "imagePromptHint" | "wordType">[],
   style: string = CHILD_ART_STYLES[0]
 ): string {
   const wordConcepts = words
     .slice(0, 8)
-    .map((word) => `${word.word} (${word.meaningZh}; visual clue: ${word.imagePromptHint})`)
+    .map((word) => `${word.word} (${word.meaningZh}; type: ${word.wordType}; visual clue: ${word.imagePromptHint})`)
     .join(", ");
 
   return [
@@ -156,8 +158,9 @@ export function buildUnitCoverPrompt(
     `Lesson: Unit ${unit.unitNumber}: ${unit.title}.`,
     `Vocabulary concepts to inspire the scene: ${wordConcepts}.`,
     `Art style: ${style}.`,
-    "Create one cohesive cheerful cartoon scene that suggests the lesson theme without spelling any vocabulary word.",
-    "Bright, warm, friendly, school-age child audience, playful educational app cover, simple readable composition.",
+    "Create one cohesive silly-action cartoon scene that suggests the lesson theme without spelling any vocabulary word.",
+    "Give different visual jobs to the vocabulary concepts: one main action, one funny reaction, one background prop, and one surprise detail.",
+    "Bright, warm, friendly, school-age child audience, playful educational app cover, simple readable composition with varied characters and props.",
     "No readable text anywhere: no English words, no Chinese characters, no letters, no captions, no labels, no signs, no handwriting, no book text, no screen text, no watermark.",
     "If the scene includes a book, paper, board, sign, poster, or screen, keep it blank or use unreadable decorative shapes only.",
     "Not photorealistic, no live-action, no scary content, no private information."
@@ -167,9 +170,10 @@ export function buildUnitCoverPrompt(
 export function videoRewardPrompt(pack: LessonPack, style: string = CHILD_ART_STYLES[0]): string {
   const words = pack.words.map((word) => word.word).join(", ");
   return [
-    `Create a short cheerful Word Planet reward video for a child who learned these English words: ${words}.`,
+    `Create a 10-second cheerful Word Planet reward video for a child who learned these English words: ${words}.`,
     `Art style: ${style}.`,
-    "Theme: School Planet celebration, friendly space-learning adventure, bright classroom/library visuals.",
+    "Structure: beginning with the learned words as visual clues, funny escalation with silly action, and a clear payoff celebration.",
+    "Theme: School Planet celebration, friendly space-learning adventure, bright classroom/library visuals, big expressions, playful props.",
     "Not photorealistic, no realistic photo look, no live-action — always illustrated, cartoonish, and loved by kids.",
     "Safe for children age 9-10, no scary content, no text overlays, no personal information."
   ].join(" ");
@@ -418,7 +422,8 @@ export async function pollAgnesVideo(
 // The story is cached on the `LessonPack` and persisted alongside it, so
 // subsequent visits never re-spend the credit.
 
-export const STORY_TEXT_PROMPT_VERSION = 1;
+export const STORY_TEXT_PROMPT_VERSION = 2;
+export const REWARD_VIDEO_PROMPT_VERSION = 2;
 
 // Number of scenes the Story screen renders. The model is asked to write
 // exactly this many sentences; if it returns fewer we pad with the last
@@ -429,12 +434,14 @@ export function buildStoryPrompt(words: Pick<WordEntry, "word" | "meaningZh">[])
   const wordList = words.map((word, index) => `${index + 1}. ${word.word} — ${word.meaningZh}`).join("\n");
   return {
     system:
-      "You write tiny, cheerful illustrated stories for Chinese-speaking kids aged 8-10 who are learning English. " +
+      "You write tiny, funny, silly-action illustrated stories for Chinese-speaking kids aged 8-10 who are learning English. " +
       "Each story is 3 sentences long, uses A1/A2 vocabulary, and weaves the supplied English words in order. " +
-      "Sentences are 6-12 English words each, present tense when possible, friendly and never scary. " +
+      "Sentence 1 is the setup, sentence 2 has a surprise visual gag, and sentence 3 has a happy payoff. " +
+      "Sentences are 6-12 English words each, present tense when possible, concrete, friendly, and never scary. " +
       "Provide a natural Chinese translation for every sentence. Output JSON only.",
     user:
       `Write a 3-sentence kid story that uses these English vocabulary words in order:\n\n${wordList}\n\n` +
+      `Make it funny through safe visual comedy: expressive reactions, silly props, and one surprising action that a child can picture. ` +
       `Return JSON of the form {"story":{"text":"…","textZh":"…","sentences":[{"en":"…","zh":"…","title":"…"}]}}. ` +
       `"text" is the full English story (3 sentences joined with spaces). "textZh" is the full Chinese ` +
       `translation. "sentences" has exactly 3 entries, in order; "title" is a short 2-4 word English heading ` +
@@ -525,10 +532,12 @@ export async function requestAgnesStory(
 // kid still wants a video.
 export function videoRewardPromptFromStory(story: StoryText, style: string = CHILD_ART_STYLES[0]): string {
   return [
-    "Create a short cheerful Word Planet reward video that illustrates this kid story:",
+    "Create a 10-second cheerful Word Planet reward video that illustrates this kid story:",
     story.text,
     `Art style: ${style}.`,
-    "Theme: School Planet celebration, friendly space-learning adventure, bright classroom/library visuals.",
+    "Structure the animation with a beginning, a funny escalation, and a clear payoff celebration.",
+    "Show the story through motion: one setup action, one silly surprise, one happy reaction, and a final sparkle/confetti moment.",
+    "Theme: School Planet celebration, friendly space-learning adventure, bright classroom/library visuals, big readable expressions.",
     "Not photorealistic, no realistic photo look, no live-action — always illustrated, cartoonish, and loved by kids.",
     "Safe for children age 9-10, no scary content, no text overlays, no personal information."
   ].join(" ");
@@ -553,6 +562,8 @@ export function buildStoryScenePrompt(
     `Chinese gloss for context: ${scene.zh}`,
     wordHints ? `Mission vocabulary in the background: ${wordHints}.` : "",
     `Art style: ${style}.`,
+    "Show one distinct funny action beat from this sentence, with a specific visual gag and expressive character reactions.",
+    "Keep each scene composition different from the others: vary camera distance, pose, main prop, and background action.",
     "Bright, friendly, non-scary, made for school-age children who love cartoons.",
     "Not photorealistic, no realistic photo look, no live-action — always illustrated and cartoonish.",
     "No readable text anywhere: no English words, no Chinese characters, no letters, captions, labels, signs, handwriting, book text, screen text, board text, posters, watermark, or private information.",
