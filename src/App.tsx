@@ -4,7 +4,9 @@ import {
   Check,
   ChevronLeft,
   ChevronDown,
+  ChevronRight,
   ClipboardList,
+  Eye,
   Gamepad2,
   Gem,
   KeyRound,
@@ -1136,6 +1138,20 @@ function App() {
     }
   }
 
+  async function deleteCachedCovers() {
+    try {
+      for (const unit of bookUnits) {
+        const coverKey = unitCoverStorageKey({ ...selection, unitNumber: unit.unitNumber });
+        scheduler.cancelAll(({ id }) => id.startsWith(`unitCover:${coverKey}`));
+        await storage.deleteUnitCover(coverKey);
+      }
+      replaceUnitCoverMap({});
+      setNotice("Selected book covers were cleared.");
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Could not delete cached covers.");
+    }
+  }
+
   async function mark(word: WordEntry, lane: "meaning" | "say" | "write", correct: boolean) {
     const next = recordMasteryResult(mastery, word.id, lane, correct);
     await persistMastery(next);
@@ -1524,7 +1540,11 @@ function App() {
               onUnlock={() => setParentUnlocked(true)}
               onDeletePictures={deleteCachedPictures}
               onDeleteVideo={deleteCachedVideo}
+              onDeleteCovers={deleteCachedCovers}
               isVideoBusy={isVideoBusy}
+              coverCount={Object.keys(unitCovers).length}
+              coverPreview={Object.values(unitCovers).sort((left, right) => left.unitNumber - right.unitNumber)[0]}
+              coverPreviews={Object.values(unitCovers).sort((left, right) => left.unitNumber - right.unitNumber)}
             />
             <button className="secondary-button setup-back" onClick={() => setScreen(setupReturnScreen)}>
               Return to Learning
@@ -2662,11 +2682,67 @@ function VisualStylePicker({
 }) {
   const [selectedId, setSelectedId] = useState(currentId);
   const [note, setNote] = useState(currentNote ?? "");
+  const [isRolling, setIsRolling] = useState(false);
+  const rollTimers = useRef<number[]>([]);
   const heading = scope === "unit" ? `Style for ${unitLabel ?? "this unit"} ✨` : "Choose your world ✨";
   const hint =
     scope === "unit"
       ? "Pick a look just for this unit. We'll only start generating once you've chosen one."
       : "Pick a look for your pictures and videos. You can change it any time.";
+  const concreteStyles = useMemo(() => VISUAL_STYLES.filter((style) => style.id !== DEFAULT_STYLE_ID), []);
+  const selectedStyle = getStyle(selectedId) ?? getStyle(DEFAULT_STYLE_ID) ?? VISUAL_STYLES[0];
+  const descriptorSummary =
+    selectedId === DEFAULT_STYLE_ID
+      ? "Tap Surprise Me to roll through the worlds and land on one picture style."
+      : selectedStyle.descriptor.split(",").slice(0, 3).join(",") + ".";
+
+  useEffect(() => {
+    return () => {
+      for (const timer of rollTimers.current) window.clearTimeout(timer);
+    };
+  }, []);
+
+  function clearRollTimers() {
+    for (const timer of rollTimers.current) window.clearTimeout(timer);
+    rollTimers.current = [];
+  }
+
+  function randomConcreteStyleId(): string {
+    const index = Math.floor(Math.random() * concreteStyles.length);
+    return concreteStyles[index]?.id ?? concreteStyles[0]?.id ?? DEFAULT_STYLE_ID;
+  }
+
+  function rollSurpriseStyle() {
+    clearRollTimers();
+    const targetId = randomConcreteStyleId();
+    const targetIndex = Math.max(0, concreteStyles.findIndex((style) => style.id === targetId));
+    const steps = 9;
+    setIsRolling(true);
+    setNote("");
+    for (let step = 0; step < steps; step += 1) {
+      const timer = window.setTimeout(() => {
+        const style = concreteStyles[(targetIndex + step) % concreteStyles.length] ?? concreteStyles[0];
+        if (style) setSelectedId(style.id);
+        if (step === steps - 1) {
+          setSelectedId(targetId);
+          setIsRolling(false);
+          rollTimers.current = [];
+        }
+      }, 80 * (step + 1));
+      rollTimers.current.push(timer);
+    }
+  }
+
+  function selectStyle(id: string) {
+    clearRollTimers();
+    setIsRolling(false);
+    setSelectedId(id);
+  }
+
+  function applySelectedStyle() {
+    const id = selectedId === DEFAULT_STYLE_ID ? randomConcreteStyleId() : selectedId;
+    onApply(id, id === DEFAULT_STYLE_ID || !note.trim() ? undefined : note);
+  }
 
   return (
     <div className="media-viewer-backdrop" role="presentation" onClick={onClose}>
@@ -2685,19 +2761,36 @@ function VisualStylePicker({
         </div>
         <div className="style-picker-body">
           <p className="style-picker-hint">{hint}</p>
-          <div className="style-grid">
-            {VISUAL_STYLES.map((style) => (
-              <button
-                key={style.id}
-                type="button"
-                className={`style-card ${selectedId === style.id ? "selected" : ""}`}
-                onClick={() => setSelectedId(style.id)}
-                aria-pressed={selectedId === style.id}
-              >
-                <span className="style-card-emoji">{style.emoji}</span>
-                <span className="style-card-label">{style.label}</span>
+          <div className="style-picker-layout">
+            <section className={`style-featured-preview ${isRolling ? "rolling" : ""}`} aria-live="polite">
+              <div className="style-featured-art-frame">
+                <img className="style-featured-art" src={selectedStyle.thumbnailSrc} alt={`${selectedStyle.label} preview`} />
+              </div>
+              <div className="style-featured-copy">
+                <span className="style-featured-kicker">{isRolling ? "Rolling..." : "Selected world"}</span>
+                <h3 className="style-featured-title">{selectedStyle.label}</h3>
+                <p>{descriptorSummary}</p>
+              </div>
+              <button className="secondary-button style-surprise-button" type="button" onClick={rollSurpriseStyle} disabled={isRolling}>
+                <Sparkles size={18} />
+                {isRolling ? "Rolling..." : "Surprise Me"}
               </button>
-            ))}
+            </section>
+            <div className="style-option-rail" aria-label="Style choices">
+              {concreteStyles.map((style) => (
+                <button
+                  key={style.id}
+                  type="button"
+                  className={`style-option style-card ${selectedId === style.id ? "selected" : ""} ${isRolling && selectedId === style.id ? "rolling" : ""}`}
+                  onClick={() => selectStyle(style.id)}
+                  aria-pressed={selectedId === style.id}
+                >
+                  <img src={style.thumbnailSrc} alt="" aria-hidden="true" />
+                  <span className="style-card-emoji">{style.emoji}</span>
+                  <span className="style-card-label">{style.label}</span>
+                </button>
+              ))}
+            </div>
           </div>
           <label className="style-freetext">
             <span>Describe your world (optional)</span>
@@ -2711,10 +2804,7 @@ function VisualStylePicker({
             <small>Keep it kind and kid-friendly. Your words shape the pictures.</small>
           </label>
           <div className="button-row">
-            <button className="secondary-button" type="button" onClick={() => onApply(DEFAULT_STYLE_ID, undefined)}>
-              Surprise Me
-            </button>
-            <button className="primary-button" type="button" onClick={() => onApply(selectedId, note.trim() ? note : undefined)}>
+            <button className="primary-button" type="button" onClick={applySelectedStyle} disabled={isRolling}>
               Use this style
               <ArrowRight size={18} />
             </button>
@@ -2839,6 +2929,8 @@ type MediaViewerState =
       title: string;
       src: string;
       alt: string;
+      items?: { title: string; src: string; alt: string }[];
+      index?: number;
     }
   | {
       type: "video";
@@ -2864,7 +2956,11 @@ export function ParentControlScreen({
   onUnlock,
   onDeletePictures,
   onDeleteVideo,
-  isVideoBusy
+  onDeleteCovers,
+  isVideoBusy,
+  coverCount,
+  coverPreview,
+  coverPreviews
 }: {
   settings: AgnesSettings;
   profile: ChildProfile;
@@ -2883,7 +2979,11 @@ export function ParentControlScreen({
   onUnlock: () => void;
   onDeletePictures: () => void;
   onDeleteVideo: () => void;
+  onDeleteCovers: () => void;
   isVideoBusy: boolean;
+  coverCount: number;
+  coverPreview?: UnitCoverAsset;
+  coverPreviews?: UnitCoverAsset[];
 }) {
   const [agnesTest, setAgnesTest] = useState<TestState>({ status: "idle" });
   const [passwordInput, setPasswordInput] = useState("");
@@ -2964,6 +3064,9 @@ export function ParentControlScreen({
   const storyCount = pack?.storyScenes.length ?? 0;
   const videoReady = isRewardVideoReady(video);
   const videoInFlight = isRewardVideoInFlight(video);
+  const hasCachedPictures = imageCount + storyCount > 0;
+  const hasCachedVideo = !video.stage && Boolean(video.blob || video.url);
+  const videoCount = hasCachedVideo ? 1 : 0;
   const cachedPictures = pack
     ? [
         ...pack.assets.map((asset) => {
@@ -2984,6 +3087,15 @@ export function ParentControlScreen({
         }))
       ]
     : [];
+  const firstCachedPicture = cachedPictures[0];
+  const canPreviewVideo = !video.stage && Boolean(video.url);
+  const coverPreviewItems = (coverPreviews ?? (coverPreview ? [coverPreview] : [])).map((cover) => ({
+    title: `Unit ${cover.unitNumber} cover`,
+    src: cover.imageUrl,
+    alt: `Cached cover for unit ${cover.unitNumber}`
+  }));
+  const firstCoverPreview = coverPreviewItems[0];
+  const canPreviewCover = Boolean(firstCoverPreview?.src);
 
   return (
     <div className="setup-grid">
@@ -3142,12 +3254,21 @@ export function ParentControlScreen({
         </div>
         {cachedPictures.length > 0 && (
           <div className="cache-preview-grid" aria-label="Cached picture previews">
-            {cachedPictures.map((picture) => (
+            {cachedPictures.map((picture, index) => (
               <button
                 className="cache-preview-button"
                 key={picture.id}
                 type="button"
-                onClick={() => setMediaViewer({ type: "image", title: picture.title, src: picture.src, alt: picture.alt })}
+                onClick={() =>
+                  setMediaViewer({
+                    type: "image",
+                    title: picture.title,
+                    src: picture.src,
+                    alt: picture.alt,
+                    items: cachedPictures,
+                    index
+                  })
+                }
               >
                 <img src={picture.src} alt={picture.alt} />
                 <span>{picture.title}</span>
@@ -3156,9 +3277,77 @@ export function ParentControlScreen({
           </div>
         )}
         <div className="button-row cache-actions parent-action-row">
-          <button className="secondary-button danger-button parent-action-button" type="button" onClick={onDeletePictures} disabled={!pack}>
+          <button
+            className="secondary-button parent-action-button"
+            type="button"
+            onClick={() => {
+              if (!firstCachedPicture) return;
+              setMediaViewer({
+                type: "image",
+                title: firstCachedPicture.title,
+                src: firstCachedPicture.src,
+                alt: firstCachedPicture.alt,
+                items: cachedPictures,
+                index: 0
+              });
+            }}
+            disabled={!firstCachedPicture}
+          >
+            <Eye size={18} />
+            Preview pictures
+          </button>
+          <button
+            className="secondary-button danger-button parent-action-button"
+            type="button"
+            onClick={onDeletePictures}
+            disabled={!hasCachedPictures}
+          >
             <Trash2 size={18} />
             Delete pictures
+          </button>
+        </div>
+      </section>
+
+      <section className="setup-card media-cache-card">
+        <h2>Cached covers</h2>
+        <div className="cache-stat-grid">
+          <span>
+            <strong>{coverCount}</strong>
+            Unit covers
+          </span>
+          <span>
+            <strong>{bookUnits.length}</strong>
+            Book units
+          </span>
+        </div>
+        <div className="button-row cache-actions parent-action-row">
+          <button
+            className="secondary-button parent-action-button"
+            type="button"
+            onClick={() => {
+              if (!firstCoverPreview) return;
+              setMediaViewer({
+                type: "image",
+                title: firstCoverPreview.title,
+                src: firstCoverPreview.src,
+                alt: firstCoverPreview.alt,
+                items: coverPreviewItems,
+                index: 0
+              });
+            }}
+            disabled={!canPreviewCover}
+          >
+            <Eye size={18} />
+            Preview covers
+          </button>
+          <button
+            className="secondary-button danger-button parent-action-button"
+            type="button"
+            onClick={onDeleteCovers}
+            disabled={coverCount === 0}
+          >
+            <Trash2 size={18} />
+            Delete covers
           </button>
         </div>
       </section>
@@ -3167,12 +3356,8 @@ export function ParentControlScreen({
         <h2>Cached video</h2>
         <div className="cache-stat-grid">
           <span>
-            <strong>{video.status}</strong>
-            Status
-          </span>
-          <span>
-            <strong>{video.progress}%</strong>
-            Progress
+            <strong>{videoCount}</strong>
+            Reward videos
           </span>
         </div>
         {videoReady && video.url ? (
@@ -3190,20 +3375,21 @@ export function ParentControlScreen({
         ) : (
           <div className="video-cache-empty">{video.error ?? (videoInFlight ? rewardStageCopy(video, true) : "No cached reward video yet.")}</div>
         )}
-        {(isVideoBusy || videoInFlight) && (
-          <progress
-            className="video-progress"
-            max={100}
-            value={video.progress}
-            aria-label="Reward video generation progress"
-          />
-        )}
         <div className="button-row cache-actions parent-action-row">
+          <button
+            className="secondary-button parent-action-button"
+            type="button"
+            onClick={() => setMediaViewer({ type: "video", title: "Cached reward video", src: video.url ?? "" })}
+            disabled={!canPreviewVideo}
+          >
+            <Eye size={18} />
+            Preview video
+          </button>
           <button
             className="secondary-button danger-button parent-action-button"
             type="button"
             onClick={onDeleteVideo}
-            disabled={isVideoBusy || (!videoReady && video.status === "idle")}
+            disabled={isVideoBusy || !hasCachedVideo}
           >
             <Trash2 size={18} />
             Delete video
@@ -3226,7 +3412,48 @@ export function ParentControlScreen({
               </button>
             </div>
             {mediaViewer.type === "image" ? (
-              <img src={mediaViewer.src} alt={mediaViewer.alt} />
+              <>
+                <img src={mediaViewer.src} alt={mediaViewer.alt} />
+                {mediaViewer.items && mediaViewer.items.length > 1 && (
+                  <div className="media-viewer-controls">
+                    <button
+                      className="secondary-button"
+                      type="button"
+                      aria-label="Previous media"
+                      onClick={() =>
+                        setMediaViewer((current) => {
+                          if (!current || current.type !== "image" || !current.items?.length) return current;
+                          const index = (((current.index ?? 0) - 1 + current.items.length) % current.items.length);
+                          const item = current.items[index];
+                          return { ...current, ...item, index };
+                        })
+                      }
+                    >
+                      <ChevronLeft size={18} />
+                      Previous
+                    </button>
+                    <span>
+                      {(mediaViewer.index ?? 0) + 1} / {mediaViewer.items.length}
+                    </span>
+                    <button
+                      className="secondary-button"
+                      type="button"
+                      aria-label="Next media"
+                      onClick={() =>
+                        setMediaViewer((current) => {
+                          if (!current || current.type !== "image" || !current.items?.length) return current;
+                          const index = ((current.index ?? 0) + 1) % current.items.length;
+                          const item = current.items[index];
+                          return { ...current, ...item, index };
+                        })
+                      }
+                    >
+                      Next
+                      <ChevronRight size={18} />
+                    </button>
+                  </div>
+                )}
+              </>
             ) : (
               <video controls autoPlay src={mediaViewer.src} />
             )}

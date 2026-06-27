@@ -28,6 +28,12 @@ describe("visual style registry", () => {
     }
   });
 
+  it("provides bundled preview art for every concrete style", () => {
+    for (const style of VISUAL_STYLES.slice(1)) {
+      expect(style.thumbnailSrc).toMatch(/^(\/src\/assets\/style-previews\/.+\.svg|data:image\/svg\+xml,)/);
+    }
+  });
+
   it("offers at least 12 curated looks plus the auto option", () => {
     expect(VISUAL_STYLES.length).toBeGreaterThanOrEqual(13);
   });

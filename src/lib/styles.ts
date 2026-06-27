@@ -1,4 +1,18 @@
 import { CHILD_ART_STYLES, pickArtStyle } from "./agnes";
+import blueyFamilyThumbnail from "../assets/style-previews/bluey-family.svg";
+import dragonBallActionThumbnail from "../assets/style-previews/dragon-ball-action.svg";
+import magicSchoolBusThumbnail from "../assets/style-previews/magic-school-bus.svg";
+import monsterCatchersThumbnail from "../assets/style-previews/monster-catchers.svg";
+import mouseClubhouseThumbnail from "../assets/style-previews/mouse-clubhouse.svg";
+import pocketBuilderThumbnail from "../assets/style-previews/pocket-builder.svg";
+import princessMusicalThumbnail from "../assets/style-previews/princess-musical.svg";
+import robotCatThumbnail from "../assets/style-previews/robot-cat.svg";
+import snowQueenThumbnail from "../assets/style-previews/snow-queen.svg";
+import spongeComedyThumbnail from "../assets/style-previews/sponge-comedy.svg";
+import superheroSquadThumbnail from "../assets/style-previews/superhero-squad.svg";
+import surpriseThumbnail from "../assets/style-previews/surprise.svg";
+import toyBoxThumbnail from "../assets/style-previews/toy-box.svg";
+import turtleNinjasThumbnail from "../assets/style-previews/turtle-ninjas.svg";
 
 // A kid-selectable visual style for lesson pictures and reward videos. Labels
 // give kids recognizable famous-cartoon cues; descriptors stay trademark-safe
@@ -8,6 +22,7 @@ export type VisualStyle = {
   // English UI text the kid reads when picking.
   label: string;
   emoji: string;
+  thumbnailSrc: string;
   // Prompt fragment spliced into the "Art style: …" slot of an Agnes prompt.
   descriptor: string;
 };
@@ -19,6 +34,7 @@ export const VISUAL_STYLES: VisualStyle[] = [
     id: "auto",
     label: "Surprise Me",
     emoji: "🎲",
+    thumbnailSrc: surpriseThumbnail,
     // Placeholder — the real descriptor for "auto" is resolved per group via
     // pickArtStyle so different missions rotate looks. Never used directly.
     descriptor: ""
@@ -27,78 +43,91 @@ export const VISUAL_STYLES: VisualStyle[] = [
     id: "sponge-comedy",
     label: "Sponge Comedy",
     emoji: "🧽",
+    thumbnailSrc: spongeComedyThumbnail,
     descriptor: CHILD_ART_STYLES[0]
   },
   {
     id: "mouse-clubhouse",
     label: "Mouse Clubhouse",
     emoji: "🏰",
+    thumbnailSrc: mouseClubhouseThumbnail,
     descriptor: CHILD_ART_STYLES[1]
   },
   {
     id: "monster-catchers",
     label: "Monster Catchers",
     emoji: "⚡",
+    thumbnailSrc: monsterCatchersThumbnail,
     descriptor: CHILD_ART_STYLES[2]
   },
   {
     id: "toy-box",
     label: "Toy Box Adventure",
     emoji: "🧸",
+    thumbnailSrc: toyBoxThumbnail,
     descriptor: CHILD_ART_STYLES[3]
   },
   {
     id: "princess-musical",
     label: "Princess Musical",
     emoji: "👑",
+    thumbnailSrc: princessMusicalThumbnail,
     descriptor: CHILD_ART_STYLES[4]
   },
   {
     id: "bluey-family",
     label: "Bluey Family",
     emoji: "💙",
+    thumbnailSrc: blueyFamilyThumbnail,
     descriptor: CHILD_ART_STYLES[5]
   },
   {
     id: "magic-school-bus",
     label: "Magic School Bus",
     emoji: "🚌",
+    thumbnailSrc: magicSchoolBusThumbnail,
     descriptor: CHILD_ART_STYLES[6]
   },
   {
     id: "robot-cat",
     label: "Robot Cat",
     emoji: "🤖",
+    thumbnailSrc: robotCatThumbnail,
     descriptor: CHILD_ART_STYLES[7]
   },
   {
     id: "turtle-ninjas",
     label: "Turtle Ninjas",
     emoji: "🥷",
+    thumbnailSrc: turtleNinjasThumbnail,
     descriptor: CHILD_ART_STYLES[8]
   },
   {
     id: "superhero-squad",
     label: "Superhero Squad",
     emoji: "🦸",
+    thumbnailSrc: superheroSquadThumbnail,
     descriptor: CHILD_ART_STYLES[9]
   },
   {
     id: "snow-queen",
     label: "Snow Queen",
     emoji: "❄️",
+    thumbnailSrc: snowQueenThumbnail,
     descriptor: CHILD_ART_STYLES[10]
   },
   {
     id: "dragon-ball-action",
     label: "Dragon Ball Action",
     emoji: "🔥",
+    thumbnailSrc: dragonBallActionThumbnail,
     descriptor: CHILD_ART_STYLES[11]
   },
   {
     id: "pocket-builder",
     label: "Pocket Builder",
     emoji: "🧱",
+    thumbnailSrc: pocketBuilderThumbnail,
     descriptor: CHILD_ART_STYLES[12]
   }
 ];

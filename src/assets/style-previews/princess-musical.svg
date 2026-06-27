@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 220" role="img" aria-label="Princess musical style preview">
+  <rect width="320" height="220" rx="28" fill="#fbcfe8"/>
+  <path d="M91 172h138l-18-80-33 30-18-54-18 54-33-30z" fill="#c084fc" stroke="#7e22ce" stroke-width="8" stroke-linejoin="round"/>
+  <circle cx="160" cy="58" r="16" fill="#fde68a" stroke="#92400e" stroke-width="6"/>
+  <path d="M232 62v74c0 13-13 22-27 16-13-6-12-22 3-27 6-2 12-1 18 1V62z" fill="#7e22ce"/>
+  <path d="M72 70v55c0 10-10 16-21 12-10-4-9-17 2-21 5-2 10-1 14 1V70z" fill="#db2777"/>
+</svg>

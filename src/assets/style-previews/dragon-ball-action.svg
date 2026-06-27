@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 220" role="img" aria-label="Dragon action style preview">
+  <rect width="320" height="220" rx="28" fill="#fee2e2"/>
+  <path d="M160 28c48 38 80 78 80 118 0 31-28 52-80 52s-80-21-80-52c0-40 32-80 80-118z" fill="#f97316" stroke="#991b1b" stroke-width="8"/>
+  <path d="M160 50c30 36 46 65 46 92 0 20-18 34-46 34s-46-14-46-34c0-27 16-56 46-92z" fill="#fde047"/>
+  <path d="M66 82c44-8 74 5 91 40M254 82c-44-8-74 5-91 40" fill="none" stroke="#ef4444" stroke-width="10" stroke-linecap="round"/>
+</svg>

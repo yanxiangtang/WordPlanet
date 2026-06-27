@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 220" role="img" aria-label="Turtle team style preview">
+  <rect width="320" height="220" rx="28" fill="#111827"/>
+  <circle cx="160" cy="112" r="66" fill="#22c55e" stroke="#052e16" stroke-width="8"/>
+  <path d="M96 100h128v34H96z" fill="#a855f7" stroke="#052e16" stroke-width="8" stroke-linejoin="round"/>
+  <circle cx="136" cy="117" r="8" fill="#fff"/><circle cx="184" cy="117" r="8" fill="#fff"/>
+  <path d="M136 150c17 13 32 13 48 0" fill="none" stroke="#052e16" stroke-width="8" stroke-linecap="round"/>
+  <path d="M52 60l216 102M268 60L52 162" stroke="#facc15" stroke-width="8" stroke-linecap="round" opacity=".82"/>
+</svg>

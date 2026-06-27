@@ -473,6 +473,8 @@ describe("interactive spelling practice", () => {
     container?.remove();
     window.history.replaceState({}, "", "/");
     localStorage?.clear();
+    vi.useRealTimers();
+    vi.restoreAllMocks();
     root = undefined;
     container = undefined;
   });
@@ -705,6 +707,62 @@ describe("kid lesson board", () => {
     expect(dialog?.textContent).toContain("Style for");
     expect(mount.querySelector(".lesson-board")).not.toBeNull();
     expect(mount.querySelector(".mission-stepper")).toBeNull();
+  });
+
+  it("shows a featured style preview and lands Surprise Me on a concrete style", async () => {
+    vi.useFakeTimers();
+    vi.spyOn(Math, "random").mockReturnValue(0);
+    const saveUnitStyle = vi.spyOn(storage, "saveUnitStyle").mockResolvedValue();
+    const mount = document.createElement("div");
+    container = mount;
+    document.body.append(mount);
+    root = createRoot(mount);
+
+    await act(async () => {
+      root?.render(<App />);
+      await Promise.resolve();
+    });
+
+    const start = Array.from(mount.querySelectorAll<HTMLButtonElement>("button")).find((button) =>
+      button.textContent?.includes("Start Lesson")
+    );
+
+    await act(async () => {
+      start?.click();
+      await Promise.resolve();
+    });
+
+    const dialog = mount.querySelector<HTMLElement>("[role='dialog']");
+    expect(dialog?.querySelector(".style-featured-preview")).not.toBeNull();
+    expect(dialog?.querySelector(".style-featured-title")?.textContent).toContain("Surprise Me");
+    expect(dialog?.querySelector<HTMLImageElement>(".style-featured-art")?.getAttribute("src")).toBeTruthy();
+
+    const surprise = Array.from(dialog?.querySelectorAll<HTMLButtonElement>("button") ?? []).find((button) =>
+      button.textContent?.includes("Surprise Me")
+    );
+    await act(async () => {
+      surprise?.click();
+      vi.advanceTimersByTime(900);
+      await Promise.resolve();
+    });
+
+    expect(mount.querySelector("[role='dialog']")).not.toBeNull();
+    expect(mount.querySelector(".style-featured-title")?.textContent).toContain("Sponge Comedy");
+    expect(mount.querySelector(".style-featured-title")?.textContent).not.toContain("Surprise Me");
+    expect(mount.querySelector<HTMLButtonElement>(".style-option.selected")?.textContent).toContain("Sponge Comedy");
+    expect(mount.querySelector<HTMLInputElement>(".style-freetext input")?.value).toBe("");
+
+    const useStyle = Array.from(mount.querySelectorAll<HTMLButtonElement>("button")).find((button) =>
+      button.textContent?.includes("Use this style")
+    );
+    await act(async () => {
+      useStyle?.click();
+      await Promise.resolve();
+    });
+
+    expect(saveUnitStyle).toHaveBeenCalledWith(expect.objectContaining({ styleId: "sponge-comedy" }), expect.any(String));
+    expect(mount.querySelector("[role='dialog']")).toBeNull();
+    expect(mount.querySelector(".word-focus-card")).not.toBeNull();
   });
 
   it("starts the selected unit when using the sample mission from lesson detail", async () => {
@@ -1377,7 +1435,9 @@ describe("parent cached media controls", () => {
           onUnlock={() => {}}
           onDeletePictures={() => {}}
           onDeleteVideo={() => {}}
+          onDeleteCovers={() => {}}
           isVideoBusy={false}
+          coverCount={0}
         />
       );
     });
@@ -1423,7 +1483,9 @@ describe("parent cached media controls", () => {
           onUnlock={() => {}}
           onDeletePictures={() => {}}
           onDeleteVideo={() => {}}
+          onDeleteCovers={() => {}}
           isVideoBusy={false}
+          coverCount={0}
         />
       );
     });
@@ -1452,6 +1514,146 @@ describe("parent cached media controls", () => {
     const videoDialog = mount.querySelector<HTMLElement>("[role='dialog']");
     expect(videoDialog?.textContent).toContain("Cached reward video");
     expect(videoDialog?.querySelector("video")?.getAttribute("src")).toBe(video.url);
+  });
+
+  it("opens cached pictures and videos from parent preview actions", () => {
+    const words = selectMissionWords("yilin-grade3", "3A", 5);
+    const pack = buildSampleLessonPack(words, { setId: "yilin-grade3", title: "Book 3A" });
+    const video: VideoTaskState = {
+      status: "completed",
+      progress: 100,
+      promptVersion: REWARD_VIDEO_PROMPT_VERSION,
+      url: "https://example.com/reward.mp4"
+    };
+    const mount = document.createElement("div");
+    container = mount;
+    document.body.append(mount);
+    root = createRoot(mount);
+
+    act(() => {
+      root?.render(
+        <ParentControlScreen
+          settings={defaultSettings}
+          profile={defaultProfile}
+          parentControls={defaultParentControlSettings}
+          selection={defaultVocabularySelection}
+          vocabularySets={vocabularySets}
+          bookUnits={bookUnits}
+          unitSummaries={unitSummaries}
+          unlocked={true}
+          pack={pack}
+          video={video}
+          onSettings={() => {}}
+          onProfile={() => {}}
+          onParentControls={() => {}}
+          onSelection={() => {}}
+          onUnlock={() => {}}
+          onDeletePictures={() => {}}
+          onDeleteVideo={() => {}}
+          onDeleteCovers={() => {}}
+          isVideoBusy={false}
+          coverCount={0}
+        />
+      );
+    });
+
+    const previewPictures = Array.from(mount.querySelectorAll<HTMLButtonElement>("button")).find((button) =>
+      button.textContent?.includes("Preview pictures")
+    );
+    const previewVideo = Array.from(mount.querySelectorAll<HTMLButtonElement>("button")).find((button) =>
+      button.textContent?.includes("Preview video")
+    );
+
+    expect(previewPictures?.disabled).toBe(false);
+    expect(previewVideo?.disabled).toBe(false);
+
+    act(() => previewPictures?.click());
+
+    const pictureDialog = mount.querySelector<HTMLElement>("[role='dialog']");
+    expect(pictureDialog?.textContent).toContain(words[0].word);
+    expect(pictureDialog?.querySelector("img")?.getAttribute("src")).toBe(pack.assets[0].imageUrl);
+
+    act(() => pictureDialog?.querySelector<HTMLButtonElement>('[aria-label="Next media"]')?.click());
+
+    const nextPictureDialog = mount.querySelector<HTMLElement>("[role='dialog']");
+    expect(nextPictureDialog?.textContent).toContain(words[1].word);
+    expect(nextPictureDialog?.querySelector("img")?.getAttribute("src")).toBe(pack.assets[1].imageUrl);
+
+    act(() => mount.querySelector<HTMLButtonElement>(".media-viewer-close")?.click());
+    act(() => previewVideo?.click());
+
+    const videoDialog = mount.querySelector<HTMLElement>("[role='dialog']");
+    expect(videoDialog?.textContent).toContain("Cached reward video");
+    expect(videoDialog?.querySelector("video")?.getAttribute("src")).toBe(video.url);
+  });
+
+  it("opens cached covers from the parent preview action", () => {
+    const cover: UnitCoverAsset = {
+      setId: "yilin-grade3",
+      bookId: "3A",
+      unitNumber: 1,
+      promptVersion: 1,
+      artStyleId: "auto",
+      imageBlob: new Blob(["cover"], { type: "image/png" }),
+      imageUrl: "blob:unit-cover-1",
+      source: "agnes",
+      createdAt: 1
+    };
+    const secondCover: UnitCoverAsset = {
+      ...cover,
+      unitNumber: 2,
+      imageUrl: "blob:unit-cover-2"
+    };
+    const mount = document.createElement("div");
+    container = mount;
+    document.body.append(mount);
+    root = createRoot(mount);
+
+    act(() => {
+      root?.render(
+        <ParentControlScreen
+          settings={defaultSettings}
+          profile={defaultProfile}
+          parentControls={defaultParentControlSettings}
+          selection={defaultVocabularySelection}
+          vocabularySets={vocabularySets}
+          bookUnits={bookUnits}
+          unitSummaries={unitSummaries}
+          unlocked={true}
+          pack={null}
+          video={{ status: "idle", progress: 0 }}
+          coverPreview={cover}
+          coverPreviews={[cover, secondCover]}
+          onSettings={() => {}}
+          onProfile={() => {}}
+          onParentControls={() => {}}
+          onSelection={() => {}}
+          onUnlock={() => {}}
+          onDeletePictures={() => {}}
+          onDeleteVideo={() => {}}
+          onDeleteCovers={() => {}}
+          isVideoBusy={false}
+          coverCount={1}
+        />
+      );
+    });
+
+    const previewCovers = Array.from(mount.querySelectorAll<HTMLButtonElement>("button")).find((button) =>
+      button.textContent?.includes("Preview covers")
+    );
+    expect(previewCovers?.disabled).toBe(false);
+
+    act(() => previewCovers?.click());
+
+    const coverDialog = mount.querySelector<HTMLElement>("[role='dialog']");
+    expect(coverDialog?.textContent).toContain("Unit 1 cover");
+    expect(coverDialog?.querySelector("img")?.getAttribute("src")).toBe(cover.imageUrl);
+
+    act(() => coverDialog?.querySelector<HTMLButtonElement>('[aria-label="Next media"]')?.click());
+
+    const nextCoverDialog = mount.querySelector<HTMLElement>("[role='dialog']");
+    expect(nextCoverDialog?.textContent).toContain("Unit 2 cover");
+    expect(nextCoverDialog?.querySelector("img")?.getAttribute("src")).toBe(secondCover.imageUrl);
   });
 
   it("keeps transient reward video URLs in progress state until caching finishes", () => {
@@ -1488,17 +1690,26 @@ describe("parent cached media controls", () => {
           onUnlock={() => {}}
           onDeletePictures={() => {}}
           onDeleteVideo={() => {}}
+          onDeleteCovers={() => {}}
           isVideoBusy={true}
+          coverCount={0}
         />
       );
     });
 
     expect(mount.querySelector(".video-cache-preview")).toBeNull();
     expect(mount.querySelector("video")).toBeNull();
-    expect(mount.querySelector<HTMLProgressElement>(".video-progress")?.value).toBe(90);
+    expect(mount.querySelector(".video-progress")).toBeNull();
+    const videoCard = Array.from(mount.querySelectorAll<HTMLElement>(".media-cache-card")).find((card) =>
+      card.querySelector("h2")?.textContent === "Cached video"
+    );
+    expect(videoCard?.textContent).toContain("0");
+    expect(videoCard?.textContent).toContain("Reward videos");
+    expect(videoCard?.textContent).not.toContain("Status");
+    expect(videoCard?.textContent).not.toContain("Progress");
   });
 
-  it("keeps parent cache cards delete-only", () => {
+  it("keeps parent cache cards preview-and-delete only", () => {
     const words = selectMissionWords("yilin-grade3", "3A", 5);
     const pack = buildSampleLessonPack(words, { setId: "yilin-grade3", title: "Book 3A" });
     const onDeletePictures = vi.fn();
@@ -1528,7 +1739,9 @@ describe("parent cached media controls", () => {
           onUnlock={() => {}}
           onDeletePictures={onDeletePictures}
           onDeleteVideo={onDeleteVideo}
+          onDeleteCovers={() => {}}
           isVideoBusy={false}
+          coverCount={0}
         />
       );
     });
@@ -1538,13 +1751,19 @@ describe("parent cached media controls", () => {
     expect(buttonText.some((text) => text?.includes("Regenerate pictures"))).toBe(false);
     expect(buttonText.some((text) => text?.includes("Regenerate video"))).toBe(false);
 
+    const previewPictures = buttonText.find((text) => text === "Preview pictures");
     const deletePictures = buttonText.find((text) => text === "Delete pictures");
+    const previewVideo = buttonText.find((text) => text === "Preview video");
     const deleteVideo = buttonText.find((text) => text === "Delete video");
+    const previewCovers = buttonText.find((text) => text === "Preview covers");
+    expect(previewPictures).toBeTruthy();
     expect(deletePictures).toBeTruthy();
+    expect(previewVideo).toBeTruthy();
     expect(deleteVideo).toBeTruthy();
+    expect(previewCovers).toBeTruthy();
   });
 
-  it("shows video progress in the cached-video card without regeneration controls", () => {
+  it("shows cached video count without status or progress controls", () => {
     const words = selectMissionWords("yilin-grade3", "3A", 5);
     const pack = buildSampleLessonPack(words, { setId: "yilin-grade3", title: "Book 3A" });
     const mount = document.createElement("div");
@@ -1572,16 +1791,25 @@ describe("parent cached media controls", () => {
           onUnlock={() => {}}
           onDeletePictures={() => {}}
           onDeleteVideo={() => {}}
+          onDeleteCovers={() => {}}
           isVideoBusy={false}
+          coverCount={0}
         />
       );
     });
 
     expect(mount.textContent).not.toContain("Regenerate video");
+    const idleVideoCard = Array.from(mount.querySelectorAll<HTMLElement>(".media-cache-card")).find((card) =>
+      card.querySelector("h2")?.textContent === "Cached video"
+    );
+    expect(idleVideoCard?.textContent).toContain("0");
+    expect(idleVideoCard?.textContent).toContain("Reward videos");
+    expect(idleVideoCard?.textContent).not.toContain("Status");
+    expect(idleVideoCard?.textContent).not.toContain("Progress");
     expect(mount.querySelector(".video-progress")).toBeNull();
 
-    // Re-render in the busy state and verify the progress bar appears and the
-    // parent card remains delete-only while lesson start owns generation.
+    // Re-render in the completed state and verify the card reports a cached
+    // video count while lesson start owns generation.
     act(() => {
       root?.render(
         <ParentControlScreen
@@ -1594,7 +1822,7 @@ describe("parent cached media controls", () => {
           unitSummaries={unitSummaries}
           unlocked={true}
           pack={pack}
-          video={{ status: "running", progress: 42 }}
+          video={{ status: "completed", progress: 100, url: "https://example.com/reward.mp4" }}
           onSettings={() => {}}
           onProfile={() => {}}
           onParentControls={() => {}}
@@ -1602,21 +1830,27 @@ describe("parent cached media controls", () => {
           onUnlock={() => {}}
           onDeletePictures={() => {}}
           onDeleteVideo={() => {}}
-          isVideoBusy={true}
+          onDeleteCovers={() => {}}
+          isVideoBusy={false}
+          coverCount={0}
         />
       );
     });
 
     expect(mount.textContent).not.toContain("Regenerating...");
-
-    const progress = mount.querySelector<HTMLProgressElement>(".video-progress");
-    expect(progress).not.toBeNull();
-    expect(progress?.value).toBe(42);
+    const completedVideoCard = Array.from(mount.querySelectorAll<HTMLElement>(".media-cache-card")).find((card) =>
+      card.querySelector("h2")?.textContent === "Cached video"
+    );
+    expect(completedVideoCard?.textContent).toContain("1");
+    expect(completedVideoCard?.textContent).toContain("Reward videos");
+    expect(completedVideoCard?.textContent).not.toContain("Status");
+    expect(completedVideoCard?.textContent).not.toContain("Progress");
+    expect(mount.querySelector(".video-progress")).toBeNull();
 
     const deleteVideo = Array.from(mount.querySelectorAll<HTMLButtonElement>("button")).find((button) =>
       button.textContent?.includes("Delete video")
     );
-    expect(deleteVideo?.disabled).toBe(true);
+    expect(deleteVideo?.disabled).toBe(false);
   });
 
   it("groups parent media actions in stable full-width rows", () => {
@@ -1647,17 +1881,135 @@ describe("parent cached media controls", () => {
           onUnlock={() => {}}
           onDeletePictures={() => {}}
           onDeleteVideo={() => {}}
+          onDeleteCovers={() => {}}
           isVideoBusy={false}
+          coverCount={0}
         />
       );
     });
 
     const actionRows = Array.from(mount.querySelectorAll<HTMLElement>(".parent-action-row"));
-    expect(actionRows).toHaveLength(2);
+    expect(actionRows).toHaveLength(3);
+    const buttonCounts = actionRows.map((row) => row.querySelectorAll<HTMLButtonElement>("button").length).sort();
+    expect(buttonCounts).toEqual([2, 2, 2]);
+    const cacheCards = Array.from(mount.querySelectorAll<HTMLElement>(".media-cache-card"));
+    const coversCard = cacheCards.find((card) => card.querySelector("h2")?.textContent === "Cached covers");
+    const videoCard = cacheCards.find((card) => card.querySelector("h2")?.textContent === "Cached video");
+    expect(coversCard?.textContent).not.toContain("Preview video");
+    expect(videoCard?.textContent).toContain("Preview video");
     for (const row of actionRows) {
       const buttons = Array.from(row.querySelectorAll<HTMLButtonElement>("button"));
-      expect(buttons).toHaveLength(1);
       expect(buttons.every((button) => button.classList.contains("parent-action-button"))).toBe(true);
     }
+  });
+
+  it("disables delete actions when cache records have no media", () => {
+    const words = selectMissionWords("yilin-grade3", "3A", 5);
+    const emptyPack: LessonPack = {
+      ...buildSampleLessonPack(words, { setId: "yilin-grade3", title: "Book 3A" }),
+      assets: [],
+      storyScenes: []
+    };
+    const mount = document.createElement("div");
+    container = mount;
+    document.body.append(mount);
+    root = createRoot(mount);
+
+    act(() => {
+      root?.render(
+        <ParentControlScreen
+          settings={{ ...defaultSettings, apiKey: "agnes-key" }}
+          profile={defaultProfile}
+          parentControls={defaultParentControlSettings}
+          selection={defaultVocabularySelection}
+          vocabularySets={vocabularySets}
+          bookUnits={bookUnits}
+          unitSummaries={unitSummaries}
+          unlocked={true}
+          pack={emptyPack}
+          video={{ status: "completed", progress: 100, promptVersion: REWARD_VIDEO_PROMPT_VERSION }}
+          onSettings={() => {}}
+          onProfile={() => {}}
+          onParentControls={() => {}}
+          onSelection={() => {}}
+          onUnlock={() => {}}
+          onDeletePictures={() => {}}
+          onDeleteVideo={() => {}}
+          onDeleteCovers={() => {}}
+          isVideoBusy={false}
+          coverCount={0}
+        />
+      );
+    });
+
+    const deletePictures = Array.from(mount.querySelectorAll<HTMLButtonElement>("button")).find((button) =>
+      button.textContent?.includes("Delete pictures")
+    );
+    const previewPictures = Array.from(mount.querySelectorAll<HTMLButtonElement>("button")).find((button) =>
+      button.textContent?.includes("Preview pictures")
+    );
+    const deleteVideo = Array.from(mount.querySelectorAll<HTMLButtonElement>("button")).find((button) =>
+      button.textContent?.includes("Delete video")
+    );
+    const previewVideo = Array.from(mount.querySelectorAll<HTMLButtonElement>("button")).find((button) =>
+      button.textContent?.includes("Preview video")
+    );
+    const previewCovers = Array.from(mount.querySelectorAll<HTMLButtonElement>("button")).find((button) =>
+      button.textContent?.includes("Preview covers")
+    );
+    const deleteCovers = Array.from(mount.querySelectorAll<HTMLButtonElement>("button")).find((button) =>
+      button.textContent?.includes("Delete covers")
+    );
+
+    expect(previewPictures?.disabled).toBe(true);
+    expect(deletePictures?.disabled).toBe(true);
+    expect(previewVideo?.disabled).toBe(true);
+    expect(deleteVideo?.disabled).toBe(true);
+    expect(previewCovers?.disabled).toBe(true);
+    expect(deleteCovers?.disabled).toBe(true);
+  });
+
+  it("resets cached unit covers from parent controls", () => {
+    const onDeleteCovers = vi.fn();
+    const mount = document.createElement("div");
+    container = mount;
+    document.body.append(mount);
+    root = createRoot(mount);
+
+    act(() => {
+      root?.render(
+        <ParentControlScreen
+          settings={{ ...defaultSettings, apiKey: "agnes-key" }}
+          profile={defaultProfile}
+          parentControls={defaultParentControlSettings}
+          selection={defaultVocabularySelection}
+          vocabularySets={vocabularySets}
+          bookUnits={bookUnits}
+          unitSummaries={unitSummaries}
+          unlocked={true}
+          pack={null}
+          video={{ status: "idle", progress: 0 }}
+          onSettings={() => {}}
+          onProfile={() => {}}
+          onParentControls={() => {}}
+          onSelection={() => {}}
+          onUnlock={() => {}}
+          onDeletePictures={() => {}}
+          onDeleteVideo={() => {}}
+          onDeleteCovers={onDeleteCovers}
+          isVideoBusy={false}
+          coverCount={bookUnits.length}
+        />
+      );
+    });
+
+    const deleteCovers = Array.from(mount.querySelectorAll<HTMLButtonElement>("button")).find((button) =>
+      button.textContent?.includes("Delete covers")
+    );
+    expect(deleteCovers?.disabled).toBe(false);
+
+    act(() => deleteCovers?.click());
+
+    expect(onDeleteCovers).toHaveBeenCalledTimes(1);
   });
 });

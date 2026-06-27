@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 220" role="img" aria-label="Monster catchers style preview">
+  <rect width="320" height="220" rx="28" fill="#fef3c7"/>
+  <circle cx="160" cy="104" r="68" fill="#f97316" stroke="#111827" stroke-width="8"/>
+  <path d="M96 104h128" stroke="#111827" stroke-width="8"/><path d="M160 36v136" stroke="#111827" stroke-width="8"/>
+  <circle cx="160" cy="104" r="24" fill="#fff" stroke="#111827" stroke-width="8"/>
+  <path d="M54 48l34 20-34 20zM266 48l-34 20 34 20z" fill="#3b82f6"/>
+  <path d="M77 176c54-26 112-26 166 0" fill="none" stroke="#8b5cf6" stroke-width="12" stroke-linecap="round"/>
+</svg>
