@@ -6,7 +6,7 @@ import { buildPendingAgnesLessonPack, buildSampleLessonPack } from "./lib/lesson
 import { REWARD_VIDEO_PROMPT_VERSION } from "./lib/agnes";
 import { createEmptyMastery, recordMasteryResult } from "./lib/mastery";
 import { defaultParentControlSettings, defaultProfile, defaultSettings, defaultVocabularySelection, storage } from "./lib/storage";
-import App, { canStartRewardPipeline, LessonBoard, Notice, ParentControlScreen, SummaryScreen } from "./App";
+import App, { canStartRewardPipeline, LessonBoard, Notice, ParentControlScreen, RewardInline, SummaryScreen } from "./App";
 import type { LessonPack, UnitCoverAsset, VideoTaskState, VocabularySet } from "./types";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -273,9 +273,7 @@ describe("mission dock navigation", () => {
 
     const rewardPanel = mount.querySelector<HTMLElement>(".inline-activity.reward");
     expect(rewardPanel?.textContent).not.toContain("Finish the missing practice below to unlock the video");
-    expect(rewardPanel?.textContent).not.toContain("Hello!");
-    expect(rewardPanel?.textContent).not.toContain("Good morning.");
-    expect(rewardPanel?.textContent).toContain("Complete the highlighted phases to unlock your reward.");
+    expect(rewardPanel?.textContent).toContain("Tap a word, then find its twin.");
 
     const gameStep = Array.from(mount.querySelectorAll<HTMLButtonElement>(".mission-stepper-item")).find((button) =>
       button.textContent?.includes("Game")
@@ -629,6 +627,113 @@ describe("interactive spelling practice", () => {
     expect(mount.querySelector<HTMLElement>(".inline-activity.spell h3")?.textContent).not.toBe(firstPrompt);
     expect(mount.querySelector<HTMLElement>(".mission-stepper-item.active")?.textContent).toContain("Spell");
     expect(mount.querySelector(".inline-activity.reward")).toBeNull();
+  });
+});
+
+describe("reward clear game", () => {
+  let root: Root | undefined;
+  let container: HTMLDivElement | undefined;
+
+  afterEach(() => {
+    if (root) {
+      act(() => root?.unmount());
+    }
+    container?.remove();
+    root = undefined;
+    container = undefined;
+  });
+
+  it("renders the clear game before the video bonus", () => {
+    const mount = document.createElement("div");
+    container = mount;
+    document.body.append(mount);
+    root = createRoot(mount);
+    const words = selectMissionWords("yilin-grade3", "3A", 5);
+    const pack = buildSampleLessonPack(words, { setId: "test", title: "Test mission" });
+    const video: VideoTaskState = { status: "completed", progress: 100, url: "blob:reward", promptVersion: REWARD_VIDEO_PROMPT_VERSION };
+
+    act(() => {
+      root?.render(<RewardInline complete={false} pack={pack} video={video} onCreate={() => {}} onSummary={() => {}} />);
+    });
+
+    expect(mount.querySelector(".reward-clear-game")).not.toBeNull();
+    expect(mount.textContent).toContain("Word Card Rescue");
+    expect(mount.textContent).toContain("Tap a word, then find its twin.");
+    expect(mount.textContent).not.toContain("Today's Mission");
+    expect(mount.textContent).not.toContain("Video Bonus");
+    expect(mount.querySelector("video")).toBeNull();
+  });
+
+  it("reveals the video bonus after the rescue meter is filled", () => {
+    const mount = document.createElement("div");
+    container = mount;
+    document.body.append(mount);
+    root = createRoot(mount);
+    const words = selectMissionWords("yilin-grade3", "3A", 1);
+    const pack = buildSampleLessonPack(words, { setId: "test", title: "Test mission" });
+    const video: VideoTaskState = { status: "completed", progress: 100, url: "blob:reward", promptVersion: REWARD_VIDEO_PROMPT_VERSION };
+
+    act(() => {
+      root?.render(<RewardInline complete={true} pack={pack} video={video} onCreate={() => {}} onSummary={() => {}} />);
+    });
+
+    for (let index = 0; index < 18; index += 1) {
+      const byToken = new Map<string, HTMLButtonElement[]>();
+      for (const button of Array.from(mount.querySelectorAll<HTMLButtonElement>(".reward-clear-tile.word"))) {
+        const token = button.dataset.token ?? "";
+        byToken.set(token, [...(byToken.get(token) ?? []), button]);
+      }
+      const pair = Array.from(byToken.values()).find((items) => items.length >= 2);
+      expect(pair).toBeTruthy();
+      act(() => {
+        pair?.[0].click();
+      });
+      act(() => {
+        pair?.[1].click();
+      });
+    }
+
+    expect(mount.textContent).toContain("Video Bonus");
+    expect(mount.querySelector("video")).not.toBeNull();
+  });
+
+  it("selects one card and clears any matching word card on the second click", () => {
+    const mount = document.createElement("div");
+    container = mount;
+    document.body.append(mount);
+    root = createRoot(mount);
+    const words = selectMissionWords("yilin-grade3", "3A", 5);
+    const pack = buildSampleLessonPack(words, { setId: "test", title: "Test mission" });
+    const video: VideoTaskState = { status: "idle", progress: 0 };
+
+    act(() => {
+      root?.render(<RewardInline complete={true} pack={pack} video={video} onCreate={() => {}} onSummary={() => {}} />);
+    });
+
+    const byToken = new Map<string, HTMLButtonElement[]>();
+    for (const button of Array.from(mount.querySelectorAll<HTMLButtonElement>(".reward-clear-tile.word"))) {
+      const token = button.dataset.token ?? "";
+      byToken.set(token, [...(byToken.get(token) ?? []), button]);
+    }
+    const pair = Array.from(byToken.values()).find((items) => items.length >= 2);
+    expect(pair).toBeTruthy();
+
+    act(() => {
+      pair?.[0].click();
+    });
+
+    expect(pair?.[0].classList.contains("selected")).toBe(true);
+    const guidance = mount.querySelector(".reward-guidance")?.textContent ?? "";
+    expect(guidance).toBe("Card selected. Find its twin.");
+    expect(guidance).not.toContain(pair?.[0].textContent ?? "");
+    expect(mount.querySelector(".reward-clear-tile.pair-hint")).toBeNull();
+
+    act(() => {
+      pair?.[1].click();
+    });
+
+    expect(mount.querySelector(".rescue-meter-copy")?.textContent).toContain("2/");
+    expect(mount.querySelector(".reward-clear-tile.selected")).toBeNull();
   });
 });
 

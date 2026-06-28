@@ -61,6 +61,14 @@ import {
   rewardPracticeGaps,
   type PracticeGap
 } from "./lib/mastery";
+import {
+  buildRewardBoard,
+  clearRewardPair,
+  hasRewardMove,
+  type RewardCell,
+  type RewardBoard,
+  type RewardTile
+} from "./lib/rewardClearGame";
 import { listenForWord, speak, speechRecognitionSupported } from "./lib/speech";
 import { buildShuffledLetterTiles } from "./lib/spelling";
 import { DEFAULT_STYLE_ID, getStyle, resolveStyleDescriptor, VISUAL_STYLES, type VisualStyle } from "./lib/styles";
@@ -1823,6 +1831,7 @@ function MissionDashboard({
               {screen === "reward" && (
                 <RewardInline
                   complete={complete}
+                  pack={pack}
                   video={video}
                   onCreate={onCreateVideo}
                   onSummary={onRewardSummary}
@@ -2393,7 +2402,7 @@ function SpellingInline({
         <div className="button-row spelling-actions">
           <button className="secondary-button" onClick={clearAnswer} type="button">Clear</button>
           <button className="finish-button" onClick={onContinue}>
-            {isLastWord ? "Unlock Video Reward" : "Next word"}
+            {isLastWord ? "Unlock Reward Game" : "Next word"}
             {isLastWord ? <Play size={18} /> : <ArrowRight size={18} />}
           </button>
         </div>
@@ -2402,13 +2411,18 @@ function SpellingInline({
   );
 }
 
-function RewardInline({
+const REWARD_BOARD_SIZE = 6;
+const REWARD_MILESTONES = [6, 12, 24, 36];
+
+export function RewardInline({
   complete,
+  pack,
   video,
   onCreate,
   onSummary
 }: {
   complete: boolean;
+  pack: LessonPack;
   video: VideoTaskState;
   onCreate: () => void;
   onSummary: () => void;
@@ -2417,29 +2431,187 @@ function RewardInline({
   const videoReady = isRewardVideoReady(video);
   const showVideoPlayer = videoReady && Boolean(video.url);
   const inFlight = isRewardVideoInFlight(video);
+  const rescueTarget = REWARD_BOARD_SIZE * REWARD_BOARD_SIZE;
+  const [rescueProgress, setRescueProgress] = useState(0);
+  const [gameComplete, setGameComplete] = useState(false);
+  const [selectedCell, setSelectedCell] = useState<RewardCell | null>(null);
+  const [pairFlash, setPairFlash] = useState<"match" | "miss" | null>(null);
+  const [board, setBoard] = useState<RewardBoard>(() =>
+    buildRewardBoard({
+      words: pack.words,
+      pack,
+      rows: REWARD_BOARD_SIZE,
+      columns: REWARD_BOARD_SIZE,
+      seed: pack.id
+    })
+  );
+  const rescuePercent = Math.min(100, Math.round((rescueProgress / rescueTarget) * 100));
+  const noMoves = board.length > 0 && !hasRewardMove(board);
+
+  useEffect(() => {
+    setBoard(
+      buildRewardBoard({
+        words: pack.words,
+        pack,
+        rows: REWARD_BOARD_SIZE,
+        columns: REWARD_BOARD_SIZE,
+        seed: pack.id
+      })
+    );
+  }, [pack]);
+
+  useEffect(() => {
+    setRescueProgress(0);
+    setGameComplete(false);
+    setSelectedCell(null);
+    setPairFlash(null);
+  }, [pack.id]);
+
+  function clearTile(row: number, col: number) {
+    if (gameComplete) return;
+    const tile = board[row]?.[col];
+    if (!tile) return;
+
+    if (!selectedCell) {
+      setSelectedCell({ row, col });
+      setPairFlash(null);
+      return;
+    }
+
+    if (selectedCell.row === row && selectedCell.col === col) {
+      setSelectedCell(null);
+      setPairFlash(null);
+      return;
+    }
+
+    const result = clearRewardPair(board, selectedCell, { row, col });
+    if (result.cleared === 0) {
+      setSelectedCell({ row, col });
+      setPairFlash("miss");
+      return;
+    }
+
+    const wordClears = result.tiles.filter((tile) => tile.kind === "word").length;
+    const nextProgress = Math.min(rescueTarget, rescueProgress + wordClears);
+    setSelectedCell(null);
+    setPairFlash("match");
+    setBoard(result.board);
+    setRescueProgress(nextProgress);
+    if (nextProgress >= rescueTarget) setGameComplete(true);
+  }
+
   return (
     <div className="inline-activity reward">
-      {showVideoPlayer ? (
-        <video controls src={video.url} />
-      ) : (
-        <div className="video-placeholder" role={inFlight ? "status" : undefined} aria-live={inFlight ? "polite" : undefined}>
-          {inFlight ? <Loader2 className="spin" size={48} /> : <Play size={58} />}
-          <span>{video.error ?? stageCopy}</span>
-          {inFlight && video.progress > 0 && (
-            <progress className="video-progress" max={100} value={video.progress} aria-label="Reward video progress" />
-          )}
+      <section className={`reward-clear-game ${gameComplete ? "complete" : ""}`} aria-label="Word Card Rescue">
+        <div className="reward-scene-top">
+          <div className="reward-clear-header">
+            <div>
+              <p className="reward-kicker">Reward Game</p>
+              <h3>Word Card Rescue</h3>
+            </div>
+            <div className="reward-rescue-bubble">Pick a word, then find its twin.</div>
+          </div>
+          <div className="reward-rescue-trail" aria-label="Rescue milestones">
+            {REWARD_MILESTONES.map((milestone) => (
+              <div className={`reward-milestone ${rescueProgress >= milestone ? "done" : ""}`} key={milestone}>
+                <span>{milestone}</span>
+                <small>cards</small>
+              </div>
+            ))}
+          </div>
         </div>
+
+        <div className="reward-rescue-layout">
+          <div className="reward-board-shell">
+            <p className={`reward-guidance ${pairFlash ?? ""}`}>
+              {gameComplete
+                ? "Planet rescued! Your video bonus is unlocked."
+                : pairFlash === "miss"
+                  ? "Not a match. That card is selected now."
+                : selectedCell
+                  ? "Card selected. Find its twin."
+                : pairFlash === "match"
+                    ? "Pair cleared! Pick your next match."
+                  : "Tap a word, then find its twin."}
+            </p>
+            <div className="rescue-meter" aria-label="Rescue meter">
+              <span style={{ width: `${rescuePercent}%` }} />
+            </div>
+            <div className="rescue-meter-copy">{rescueProgress}/{rescueTarget} word cards rescued</div>
+            {noMoves && !gameComplete && <p className="reward-guidance">No pairs left. Try the remaining cards again.</p>}
+            <div className="reward-clear-board" role="grid" aria-label="Reward word card board">
+              {board.map((row, rowIndex) =>
+                row.map((tile, colIndex) => {
+                  if (!tile) {
+                    return (
+                      <div
+                        className="reward-clear-slot empty"
+                        key={`empty-${rowIndex}-${colIndex}`}
+                        role="gridcell"
+                        aria-label="Cleared card"
+                      />
+                    );
+                  }
+                  const isSelected = selectedCell?.row === rowIndex && selectedCell.col === colIndex;
+                  return (
+                    <button
+                      className={`reward-clear-tile ${tile.kind} ${isSelected ? "selected" : ""} ${pairFlash === "match" ? "pair-pop" : ""}`}
+                      key={tile.id}
+                      type="button"
+                      role="gridcell"
+                      onClick={() => clearTile(rowIndex, colIndex)}
+                      disabled={gameComplete}
+                      data-token={tile.token}
+                      aria-pressed={isSelected}
+                      aria-label={`${tile.label}${isSelected ? ", selected" : ""}`}
+                    >
+                      <span className="reward-card-sound" aria-hidden="true"><Volume2 size={12} /></span>
+                      {tile.kind === "picture" && tile.imageUrl ? (
+                        <img src={tile.imageUrl} alt="" />
+                      ) : (
+                        <span className="reward-card-word">{tile.label}</span>
+                      )}
+                    </button>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {gameComplete && (
+        <section className="video-bonus" aria-label="Video Bonus">
+          <div className="video-bonus-header">
+            <Trophy size={28} />
+            <h3>Video Bonus</h3>
+          </div>
+          {showVideoPlayer ? (
+            <video controls src={video.url} />
+          ) : (
+            <div className="video-placeholder" role={inFlight ? "status" : undefined} aria-live={inFlight ? "polite" : undefined}>
+              {inFlight ? <Loader2 className="spin" size={48} /> : <Play size={58} />}
+              <span>{video.error ?? stageCopy}</span>
+              {inFlight && video.progress > 0 && (
+                <progress className="video-progress" max={100} value={video.progress} aria-label="Reward video progress" />
+              )}
+            </div>
+          )}
+          <div className="button-row centered">
+            <button
+              className={`primary-button ${inFlight ? "busy-button" : ""}`}
+              onClick={onCreate}
+              disabled={inFlight}
+              aria-disabled={inFlight}
+              data-busy={inFlight ? "true" : undefined}
+            >
+              {videoReady ? "Make a new reward" : inFlight ? "Working..." : "Create reward"}
+            </button>
+          </div>
+        </section>
       )}
+
       <div className="button-row centered">
-        <button
-          className={`primary-button ${inFlight ? "busy-button" : ""}`}
-          onClick={onCreate}
-          disabled={inFlight}
-          aria-disabled={inFlight}
-          data-busy={inFlight ? "true" : undefined}
-        >
-          {videoReady ? "Make a new reward" : inFlight ? "Working..." : "Create reward"}
-        </button>
         <button className="secondary-button" onClick={onSummary}>Summary</button>
       </div>
     </div>
