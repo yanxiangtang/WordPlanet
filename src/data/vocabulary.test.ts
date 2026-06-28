@@ -19,6 +19,14 @@ describe("JSON vocabulary sets", () => {
     expect(yilin?.books.map((book) => book.id)).toEqual(["3A", "3B"]);
   });
 
+  it("lists Yilin grade sets in ascending grade order", () => {
+    const yilinSetIds = listVocabularySets()
+      .filter((set) => set.id.startsWith("yilin-grade"))
+      .map((set) => set.id);
+
+    expect(yilinSetIds).toEqual(["yilin-grade3", "yilin-grade4", "yilin-grade5", "yilin-grade6"]);
+  });
+
   it("flattens a book's units into derived word entries with unique ids", () => {
     const words = getBookWords("yilin-grade3", "3A");
     const bookSummary = listBooks("yilin-grade3").find((book) => book.id === "3A");

@@ -1547,6 +1547,45 @@ describe("parent cached media controls", () => {
     container = undefined;
   });
 
+  it("shows parent controls without requiring the saved parent password", () => {
+    const mount = document.createElement("div");
+    container = mount;
+    document.body.append(mount);
+    root = createRoot(mount);
+
+    act(() => {
+      root?.render(
+        <ParentControlScreen
+          settings={defaultSettings}
+          profile={defaultProfile}
+          parentControls={{ password: "2468", createdAt: Date.now() }}
+          selection={defaultVocabularySelection}
+          vocabularySets={vocabularySets}
+          bookUnits={bookUnits}
+          unitSummaries={unitSummaries}
+          unlocked={false}
+          pack={null}
+          video={{ status: "idle", progress: 0 }}
+          onSettings={() => {}}
+          onProfile={() => {}}
+          onParentControls={() => {}}
+          onSelection={() => {}}
+          onUnlock={() => {}}
+          onDeletePictures={() => {}}
+          onDeleteVideo={() => {}}
+          onDeleteCovers={() => {}}
+          isVideoBusy={false}
+          coverCount={0}
+        />
+      );
+    });
+
+    expect(mount.textContent).toContain("Kid info");
+    expect(mount.textContent).toContain("Vocabulary");
+    expect(mount.querySelector(".parent-password-form")).toBeNull();
+    expect(mount.querySelector(".parent-gate")).toBeNull();
+  });
+
   it("uses unit selection without exposing a words-per-mission control", () => {
     const mount = document.createElement("div");
     container = mount;

@@ -32,9 +32,21 @@ type RawSet = {
 // is available synchronously at module load (works under Vite and Vitest).
 const setModules = import.meta.glob<{ default: RawSet }>("./vocabulary/*.json", { eager: true });
 
+function setSortKey(set: RawSet): { series: string; grade: number } {
+  const gradeMatch = set.id.match(/^(.*-grade)(\d+)$/);
+  return {
+    series: gradeMatch?.[1] ?? set.name,
+    grade: gradeMatch ? Number(gradeMatch[2]) : Number.POSITIVE_INFINITY
+  };
+}
+
 const REGISTRY: RawSet[] = Object.values(setModules)
   .map((module) => module.default)
-  .sort((a, b) => a.name.localeCompare(b.name));
+  .sort((a, b) => {
+    const left = setSortKey(a);
+    const right = setSortKey(b);
+    return left.series.localeCompare(right.series) || left.grade - right.grade || a.name.localeCompare(b.name);
+  });
 
 function slugify(word: string): string {
   return word

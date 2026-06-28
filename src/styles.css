@@ -821,41 +821,6 @@ input {
   margin-right: 8px;
 }
 
-.parent-gate {
-  width: min(520px, calc(100vw - 32px));
-  margin: 44px auto 0;
-  text-align: center;
-}
-
-.parent-gate-icon {
-  width: 76px;
-  height: 76px;
-  margin: 0 auto 12px;
-  border-radius: 50%;
-  color: var(--theme-primary-dark);
-  background: var(--theme-primary-soft);
-  display: grid;
-  place-items: center;
-  border: 1px solid var(--theme-primary-border);
-}
-
-.parent-password-form {
-  display: grid;
-  gap: 12px;
-  margin-top: 18px;
-  text-align: left;
-}
-
-.parent-password-form .primary-button {
-  width: 100%;
-}
-
-.parent-error {
-  margin: 0;
-  color: #b91c1c;
-  font-weight: 900;
-}
-
 .parent-unit-board {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(128px, 1fr));

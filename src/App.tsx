@@ -9,10 +9,8 @@ import {
   Eye,
   Gamepad2,
   Gem,
-  KeyRound,
   LayoutGrid,
   Loader2,
-  LockKeyhole,
   Mic,
   Pencil,
   Play,
@@ -25,7 +23,7 @@ import {
   X,
   type LucideIcon
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getUnitWords, getVocabularySet, listBookUnits, listVocabularySets, selectMissionWords } from "./data/vocabulary";
 import {
   buildStoryScenePrompt,
@@ -238,7 +236,6 @@ function App() {
   const [parentControls, setParentControls] = useState<ParentControlSettings>(() =>
     typeof window === "undefined" ? { password: "", createdAt: null } : loadParentControlSettings()
   );
-  const [parentUnlocked, setParentUnlocked] = useState(false);
   const [screen, setScreen] = useState<Screen>(() => readScreenFromUrl() ?? "home");
   const [setupReturnScreen, setSetupReturnScreen] = useState<LearningScreen>(() => {
     const initialScreen = readScreenFromUrl();
@@ -1538,14 +1535,14 @@ function App() {
               vocabularySets={vocabularySets}
               bookUnits={bookUnits}
               unitSummaries={effectiveUnitSummaries}
-              unlocked={parentUnlocked}
+              unlocked={true}
               pack={pack}
               video={video}
               onSettings={persistSettings}
               onProfile={persistProfile}
               onParentControls={persistParentControls}
               onSelection={(next) => void switchToUnit(next, false)}
-              onUnlock={() => setParentUnlocked(true)}
+              onUnlock={() => {}}
               onDeletePictures={deleteCachedPictures}
               onDeleteVideo={deleteCachedVideo}
               onDeleteCovers={deleteCachedCovers}
@@ -3159,10 +3156,7 @@ export function ParentControlScreen({
   coverPreviews?: UnitCoverAsset[];
 }) {
   const [agnesTest, setAgnesTest] = useState<TestState>({ status: "idle" });
-  const [passwordInput, setPasswordInput] = useState("");
-  const [passwordMessage, setPasswordMessage] = useState("");
   const [mediaViewer, setMediaViewer] = useState<MediaViewerState | null>(null);
-  const hasPassword = parentControls.password.trim().length > 0;
 
   async function runTest(setState: (state: TestState) => void, action: () => Promise<void>) {
     setState({ status: "testing" });
@@ -3172,65 +3166,6 @@ export function ParentControlScreen({
     } catch (error) {
       setState({ status: "error", message: error instanceof Error ? error.message : "Test failed" });
     }
-  }
-
-  function submitPassword(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const value = passwordInput.trim();
-    if (!value) {
-      setPasswordMessage("Please enter a simple parent password.");
-      return;
-    }
-    if (!hasPassword) {
-      onParentControls({
-        password: value,
-        createdAt: Date.now()
-      });
-      setPasswordInput("");
-      setPasswordMessage("");
-      onUnlock();
-      return;
-    }
-    if (value === parentControls.password) {
-      setPasswordInput("");
-      setPasswordMessage("");
-      onUnlock();
-      return;
-    }
-    setPasswordMessage("Password did not match.");
-  }
-
-  if (!unlocked) {
-    return (
-      <section className="setup-card parent-gate">
-        <div className="parent-gate-icon">
-          <LockKeyhole size={34} />
-        </div>
-        <h2>{hasPassword ? "Parent controls" : "Create parent password"}</h2>
-        <p className="fine-print">
-          {hasPassword
-            ? "Enter the browser-local parent password to manage generated media and Agnes settings."
-            : "Choose a simple browser-local password before opening parent controls."}
-        </p>
-        <form className="parent-password-form" onSubmit={submitPassword}>
-          <label>
-            Password
-            <input
-              type="password"
-              autoComplete={hasPassword ? "current-password" : "new-password"}
-              value={passwordInput}
-              onChange={(event) => setPasswordInput(event.target.value)}
-              placeholder={hasPassword ? "Enter password" : "Create password"}
-            />
-          </label>
-          {passwordMessage && <p className="parent-error">{passwordMessage}</p>}
-          <button className="primary-button" type="submit">
-            <KeyRound size={18} />
-            {hasPassword ? "Unlock" : "Create and unlock"}
-          </button>
-        </form>
-      </section>
-    );
   }
 
   const imageCount = pack?.assets.length ?? 0;
