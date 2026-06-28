@@ -887,7 +887,7 @@ describe("kid lesson board", () => {
     container = undefined;
   });
 
-  it("shows unit lesson cards on the child home screen", async () => {
+  it("shows planet mission cards on the child home screen", async () => {
     const mount = document.createElement("div");
     container = mount;
     document.body.append(mount);
@@ -898,11 +898,12 @@ describe("kid lesson board", () => {
       await Promise.resolve();
     });
 
-    expect(mount.textContent).toContain("Choose a lesson");
-    expect(mount.textContent).toContain("Unit 1");
+    expect(mount.textContent).toContain("Choose a planet");
+    expect(mount.textContent).toContain("Planet 1");
     expect(mount.textContent).toContain("Hello!");
-    expect(mount.textContent).toContain("Unit 2");
+    expect(mount.textContent).toContain("Planet 2");
     expect(mount.textContent).toContain("I'm Liu Tao");
+    expect(mount.textContent).toContain("Word Zoo");
     expect(mount.querySelectorAll(".lesson-cover-placeholder").length).toBeGreaterThan(0);
     expect(mount.querySelector(".mission-stepper")).toBeNull();
   });
@@ -919,7 +920,7 @@ describe("kid lesson board", () => {
     });
 
     const unitTwo = Array.from(mount.querySelectorAll<HTMLButtonElement>("button")).find((button) =>
-      button.textContent?.includes("Unit 2")
+      button.textContent?.includes("Planet 2")
     );
 
     await act(async () => {
@@ -927,7 +928,7 @@ describe("kid lesson board", () => {
       await Promise.resolve();
     });
 
-    expect(mount.textContent).toContain("Lesson detail");
+    expect(mount.textContent).toContain("Planet detail");
     expect(mount.textContent).toContain("are");
     expect(mount.textContent).toContain("you");
     expect(mount.textContent).toContain("Start Lesson");
@@ -1017,7 +1018,7 @@ describe("kid lesson board", () => {
     });
 
     const unitTwo = Array.from(mount.querySelectorAll<HTMLButtonElement>("button")).find((button) =>
-      button.textContent?.includes("Unit 2")
+      button.textContent?.includes("Planet 2")
     );
 
     await act(async () => {
@@ -1076,6 +1077,7 @@ describe("kid lesson board", () => {
     expect(mount.querySelector(".word-focus-card")).toBeNull();
     expect(mount.querySelector<HTMLElement>(".mission-stepper-item.active")?.textContent).toContain("Story");
     expect(mount.querySelector<HTMLElement>(".inline-activity.story")).not.toBeNull();
+    expect(mount.querySelector<HTMLButtonElement>(".story-read-button")?.textContent).toContain("Read scene");
   });
 
   it("advances through picture game words before going to spelling", async () => {
@@ -1116,6 +1118,8 @@ describe("kid lesson board", () => {
 
     expect(mount.querySelector<HTMLElement>(".inline-activity.game h3")?.textContent).toContain(words[0].word);
     expect(mount.querySelector<HTMLButtonElement>(".inline-activity.game .primary-button")?.textContent).toContain("Next game");
+    expect(mount.textContent).not.toContain("Choice 1");
+    expect(Array.from(mount.querySelectorAll<HTMLElement>(".picture-choice span")).map((item) => item.textContent)).toContain(words[0].word);
 
     await act(async () => {
       mount.querySelector<HTMLButtonElement>(".inline-activity.game .primary-button")?.click();

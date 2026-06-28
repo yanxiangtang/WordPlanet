@@ -51,6 +51,7 @@ import {
   withObjectUrls
 } from "./lib/lesson";
 import { getMediaScheduler } from "./lib/mediaScheduler";
+import { playFeedback } from "./lib/audioFeedback";
 import {
   createEmptyMastery,
   isMissionComplete,
@@ -70,6 +71,7 @@ import {
   type RewardTile,
   type RewardWordItem
 } from "./lib/rewardClearGame";
+import { buildProgressStats, loadDailyProgress, recordDailyVisit, saveDailyProgress, type DailyProgress, type ProgressStats } from "./lib/progress";
 import { listenForWord, speak, speechRecognitionSupported } from "./lib/speech";
 import { buildShuffledLetterTiles } from "./lib/spelling";
 import { DEFAULT_STYLE_ID, getStyle, resolveStyleDescriptor, VISUAL_STYLES, type VisualStyle } from "./lib/styles";
@@ -117,6 +119,7 @@ type UnitLessonSummary = {
   hasVideo: boolean;
   hasProgress: boolean;
   complete: boolean;
+  masteredWords?: number;
 };
 
 type SpellingFeedback = {
@@ -261,7 +264,7 @@ function App() {
     const set = getVocabularySet(selection.setId);
     const book = set?.books.find((item) => item.id === selection.bookId);
     const unit = bookUnits.find((item) => item.unitNumber === selection.unitNumber);
-    return [book?.name ?? set?.name, unit ? `Unit ${unit.unitNumber}: ${unit.title}` : null].filter(Boolean).join(" · ") || "Word Planet";
+    return [book?.name ?? set?.name, unit ? `Planet ${unit.unitNumber}: ${unit.title}` : null].filter(Boolean).join(" · ") || "Word Planet";
   }, [bookUnits, selection.setId, selection.bookId, selection.unitNumber]);
   const lessonMeta = useMemo(
     () => ({ setId: `${selection.setId}-${selection.bookId}-unit-${selection.unitNumber}`, title: missionTitle }),
@@ -292,6 +295,9 @@ function App() {
   const [spellShuffleSeed, setSpellShuffleSeed] = useState(0);
   const [speechMessage, setSpeechMessage] = useState("");
   const [isVideoBusy, setIsVideoBusy] = useState(false);
+  const [dailyProgress, setDailyProgress] = useState<DailyProgress>(() =>
+    typeof window === "undefined" ? { count: 0, lastVisitDate: "" } : loadDailyProgress()
+  );
 
   // Object URLs for cached image/video Blobs are minted here so we can revoke
   // them in one place. Every code path that swaps `pack` or replaces the video
@@ -460,13 +466,16 @@ function App() {
               hasProgress: Boolean(hasCurrentMastery && Object.values(storedMastery).some((word) =>
                 Object.values(word).some((lane) => lane.correct > 0 || lane.wrong > 0 || lane.completed)
               )),
-              complete: hasCurrentMastery ? isMissionComplete(storedMastery) : false
+              complete: hasCurrentMastery ? isMissionComplete(storedMastery) : false,
+              masteredWords: hasCurrentMastery
+                ? Object.values(storedMastery).filter((word) => word.meaning.completed && word.write.completed).length
+                : 0
             }
           ] as const;
         } catch {
           return [
             unit.unitNumber,
-            { hasPack: false, hasVideo: false, hasProgress: false, complete: false }
+            { hasPack: false, hasVideo: false, hasProgress: false, complete: false, masteredWords: 0 }
           ] as const;
         }
       })
@@ -492,13 +501,22 @@ function App() {
       hasProgress: Object.values(mastery).some((word) =>
         Object.values(word).some((lane) => lane.correct > 0 || lane.wrong > 0 || lane.completed)
       ),
-      complete
+      complete,
+      masteredWords: Object.values(mastery).filter((word) => word.meaning.completed && word.write.completed).length
     }),
     [complete, mastery, pack, video.blob, video.stage, video.status, video.url]
   );
   const effectiveUnitSummaries = useMemo(
     () => ({ ...unitSummaries, [selection.unitNumber]: currentUnitSummary }),
     [currentUnitSummary, selection.unitNumber, unitSummaries]
+  );
+  const progressStats = useMemo(
+    () => buildProgressStats({ currentMastery: mastery, unitSummaries: effectiveUnitSummaries }),
+    [effectiveUnitSummaries, mastery]
+  );
+  const collectedWords = useMemo(
+    () => dashboardPack.words.filter((word) => mastery[word.id]?.meaning.completed && mastery[word.id]?.write.completed),
+    [dashboardPack.words, mastery]
   );
 
   // Resolve the kid's chosen visual style into the descriptor Agnes receives.
@@ -677,6 +695,8 @@ function App() {
 
   function transitionWithCheer(cheer: string, next: Screen) {
     if (celebrationTimerRef.current) clearTimeout(celebrationTimerRef.current);
+    playFeedback("complete");
+    speak(cheer.replace(/[^\w\s!]/g, ""), 1);
     setCelebration({ cheer });
     celebrationTimerRef.current = setTimeout(() => {
       setCelebration(null);
@@ -744,7 +764,7 @@ function App() {
     await loadUnitState(resolved, false);
     await refreshUnitSummaries(resolved);
     const unit = listBookUnits(resolved.setId, resolved.bookId).find((item) => item.unitNumber === resolved.unitNumber);
-    setNotice(openDetail && unit ? `Lesson detail ready: Unit ${unit.unitNumber} ${unit.title}.` : "Lesson book updated.");
+    setNotice(openDetail && unit ? `Planet ${unit.unitNumber} is ready: ${unit.title}.` : "Planet book updated.");
   }
 
   function persistProfile(next: ChildProfile) {
@@ -761,6 +781,12 @@ function App() {
     setMastery(next);
     await storage.saveMastery(next, activeUnitKey);
     await refreshUnitSummaries();
+  }
+
+  function recordDailyLearning() {
+    const next = recordDailyVisit(dailyProgress);
+    setDailyProgress(next);
+    saveDailyProgress(next);
   }
 
   function makeMediaRunId(): string {
@@ -1162,6 +1188,13 @@ function App() {
 
   async function mark(word: WordEntry, lane: "meaning" | "say" | "write", correct: boolean) {
     const next = recordMasteryResult(mastery, word.id, lane, correct);
+    if (correct) {
+      recordDailyLearning();
+      playFeedback("correct");
+      if (lane === "meaning") setNotice(`${word.word} joined your Word Zoo!`);
+    } else {
+      playFeedback("wrong");
+    }
     await persistMastery(next);
   }
 
@@ -1177,8 +1210,8 @@ function App() {
       const result = await listenForWord(word.word);
       setSpeechMessage(result.matched ? `Nice! I heard "${result.transcript}".` : `I heard "${result.transcript}". Try once more.`);
       await mark(word, "say", result.matched);
-    } catch (error) {
-      setSpeechMessage(error instanceof Error ? error.message : "Could not hear clearly.");
+    } catch {
+      setSpeechMessage("My ears wiggled. Say it once more!");
       await mark(word, "say", false);
     }
   }
@@ -1188,7 +1221,10 @@ function App() {
     const correct = attempt.toLowerCase() === word.word.toLowerCase();
     await mark(word, "write", correct);
     setSpellFeedback({ kind: correct ? "correct" : "retry", attempt, word: word.word });
-    if (!correct) setNotice(`Good try. The word is ${word.word}.`);
+    if (!correct) {
+      speak("oopsie", 1.05);
+      setNotice(`Good try. The word is ${word.word}.`);
+    }
   }
 
   const handleSpellInput = useCallback((value: string) => {
@@ -1523,6 +1559,8 @@ function App() {
       <TopBar
         profile={profile}
         missionTitle={missionTitle}
+        progress={progressStats}
+        streakCount={dailyProgress.count}
         compact={isLessonPicker}
         onSetup={openParentControls}
       />
@@ -1577,6 +1615,9 @@ function App() {
             spellShuffleSeed={spellShuffleSeed}
             speechMessage={speechMessage}
             complete={complete}
+            progress={progressStats}
+            streakCount={dailyProgress.count}
+            collectedWords={collectedWords}
             isGenerating={isGenerating}
             missionReady={missionReady}
             notice={visibleNotice}
@@ -1617,7 +1658,7 @@ function App() {
       {stylePickerOpen && (
         <VisualStylePicker
           scope="unit"
-          unitLabel={`Unit ${selection.unitNumber}`}
+          unitLabel={`Planet ${selection.unitNumber}`}
           currentId={currentUnitPick?.styleId ?? profile.visualStyleId ?? DEFAULT_STYLE_ID}
           currentNote={currentUnitPick?.styleNote ?? profile.visualStyleNote}
           onClose={() => setStylePickerOpen(false)}
@@ -1660,6 +1701,9 @@ function MissionDashboard({
   spellShuffleSeed,
   speechMessage,
   complete,
+  progress,
+  streakCount,
+  collectedWords,
   isGenerating,
   missionReady,
   notice,
@@ -1711,6 +1755,9 @@ function MissionDashboard({
   spellShuffleSeed: number;
   speechMessage: string;
   complete: boolean;
+  progress: ProgressStats;
+  streakCount: number;
+  collectedWords: WordEntry[];
   isGenerating: boolean;
   missionReady: boolean;
   notice: string;
@@ -1766,6 +1813,9 @@ function MissionDashboard({
           words={pack.words}
           missionReady={missionReady}
           isGenerating={isGenerating}
+          progress={progress}
+          streakCount={streakCount}
+          collectedWords={collectedWords}
           selectedStyleLabel={unitStyleLabel}
           selectedStyleEmoji={unitStyleEmoji}
           onSelectUnit={onSelectUnit}
@@ -1868,6 +1918,9 @@ export function LessonBoard({
   words,
   missionReady,
   isGenerating,
+  progress,
+  streakCount,
+  collectedWords,
   selectedStyleLabel,
   selectedStyleEmoji,
   onSelectUnit,
@@ -1883,6 +1936,9 @@ export function LessonBoard({
   words: WordEntry[];
   missionReady: boolean;
   isGenerating: boolean;
+  progress?: ProgressStats;
+  streakCount?: number;
+  collectedWords?: WordEntry[];
   selectedStyleLabel: string;
   selectedStyleEmoji: string;
   onSelectUnit: (unitNumber: number) => void;
@@ -1897,14 +1953,36 @@ export function LessonBoard({
   const selectedStatus = unitStatusLabel(selectedSummary);
 
   return (
-    <section className="lesson-board" aria-label="Choose a lesson">
+    <section className="lesson-board planet-board" aria-label="Choose a planet">
       <div className="lesson-board-header">
         <div>
-          <h2>Choose a lesson</h2>
-          <p>Pick a unit, preview the words, then start when you are ready.</p>
+          <h2>Choose a planet</h2>
+          <p>Pick a planet, meet its word friends, then launch your mission.</p>
         </div>
-        <span className="lesson-count">{units.length} units</span>
+        <span className="lesson-count">{units.length} planets</span>
       </div>
+
+      <CompanionBubble
+        mood="home"
+        message={`Pip saved your map. ${streakCount ? `${streakCount}-day streak!` : "Start today's streak!"}`}
+      />
+
+      <button
+        className="daily-mystery-box"
+        type="button"
+        aria-label="Open daily mystery box"
+        onClick={() => {
+          playFeedback("complete");
+          speak("Mystery hint. Listen, match, spell, and your word zoo grows.", 0.95);
+        }}
+      >
+        <div>
+          <span className="mystery-box-icon" aria-hidden="true">?</span>
+          <strong>Daily mystery box</strong>
+          <small>Tap for today's tiny hint.</small>
+        </div>
+        <span>{progress?.collectedWords ?? 0} word friends</span>
+      </button>
 
       <div className="lesson-unit-grid">
         {units.map((unit) => {
@@ -1927,7 +2005,7 @@ export function LessonBoard({
         })}
       </div>
 
-      <section className="lesson-detail-panel" aria-label="Lesson detail">
+      <section className="lesson-detail-panel" aria-label="Planet detail">
         <div className="lesson-detail-cover" aria-hidden="true">
           {selectedCover?.imageUrl ? (
             <img src={selectedCover.imageUrl} alt="" />
@@ -1936,9 +2014,9 @@ export function LessonBoard({
           )}
         </div>
         <div>
-          <span className="detail-kicker">Lesson detail</span>
+          <span className="detail-kicker">Planet detail</span>
           <h3>
-            Unit {selectedUnit?.unitNumber ?? selection.unitNumber}
+            Planet {selectedUnit?.unitNumber ?? selection.unitNumber}
             {selectedUnit ? `: ${selectedUnit.title}` : ""}
           </h3>
           <p>{selectedStatus} · {words.length} mission words</p>
@@ -1991,6 +2069,41 @@ export function LessonBoard({
           </button>
         </div>
       </section>
+
+      <WordZooPreview words={collectedWords ?? []} />
+    </section>
+  );
+}
+
+function CompanionBubble({ mood, message }: { mood: "home" | "learn" | "cheer"; message: string }) {
+  return (
+    <aside className={`companion-bubble ${mood}`} aria-label="Pip the pocket planet">
+      <span className="companion-face" aria-hidden="true">✦</span>
+      <p>{message}</p>
+    </aside>
+  );
+}
+
+function WordZooPreview({ words }: { words: WordEntry[] }) {
+  const previewWords = words.slice(0, 6);
+  return (
+    <section className="word-zoo-preview" aria-label="Word Zoo">
+      <div className="word-zoo-header">
+        <strong>Word Zoo</strong>
+        <span>{words.length} collected</span>
+      </div>
+      <div className="word-zoo-grid">
+        {previewWords.length > 0 ? (
+          previewWords.map((word) => (
+            <span className="word-zoo-card" key={word.id}>
+              <b>{word.word}</b>
+              <small>{word.meaningZh}</small>
+            </span>
+          ))
+        ) : (
+          <span className="word-zoo-empty">Master a word to hatch your first friend.</span>
+        )}
+      </div>
     </section>
   );
 }
@@ -2054,9 +2167,7 @@ function UnitCard({
       ref={buttonRef}
       className={`lesson-unit-card ${selected ? "selected" : ""} ${busy ? "busy" : ""}`}
       type="button"
-      aria-label={`Unit ${unit.unitNumber}: ${unit.title}. ${unit.wordCount} words. ${unitStatusLabel(summary)}. ${
-        summary?.hasPack ? "Pictures saved" : "Pictures needed"
-      }. ${summary?.hasVideo ? "Video saved" : "Video later"}.`}
+      aria-label={`Planet ${unit.unitNumber}: ${unit.title}. ${unit.wordCount} words. ${unitStatusLabel(summary)}.`}
       onClick={onSelect}
     >
       <span className="lesson-card-cover" aria-hidden="true">
@@ -2067,7 +2178,7 @@ function UnitCard({
         )}
       </span>
       <span className="lesson-card-top">
-        <span className="lesson-unit-number">Unit {unit.unitNumber}</span>
+        <span className="lesson-unit-number">Planet {unit.unitNumber}</span>
         <span className={`lesson-status ${unitStatusLabel(summary).toLowerCase().replace(" ", "-")}`}>
           {busy ? "Generating" : compactUnitStatusLabel(summary)}
         </span>
@@ -2179,6 +2290,8 @@ function StoryQuestInline({ pack, onContinue }: { pack: LessonPack; onContinue: 
     }
   }
 
+  const sceneWords = useMemo(() => scene?.text.split(/(\s+)/) ?? [], [scene?.text]);
+
   return (
     <div className="inline-activity story">
       {showPlaceholder ? (
@@ -2191,8 +2304,33 @@ function StoryQuestInline({ pack, onContinue }: { pack: LessonPack; onContinue: 
       ) : null}
       <div>
         <h3>{scene?.title ?? `Scene ${sceneIndex + 1}`}</h3>
-        <p>{scene?.text ?? "Your story scene is being drawn…"}</p>
+        {scene?.text ? (
+          <p className="story-readable-text">
+            {sceneWords.map((part, index) => {
+              if (/^\s+$/.test(part)) return part;
+              const cleanWord = part.replace(/^[^\w]+|[^\w]+$/g, "");
+              return (
+                <button
+                  className="story-word-button"
+                  key={`${part}-${index}`}
+                  type="button"
+                  onClick={() => cleanWord && speak(cleanWord, 0.9)}
+                >
+                  {part}
+                </button>
+              );
+            })}
+          </p>
+        ) : (
+          <p>Your story scene is being drawn…</p>
+        )}
         {scene?.textZh && <small>{scene.textZh}</small>}
+        {scene?.text && (
+          <button className="secondary-button story-read-button" type="button" onClick={() => speak(scene.text, 0.88)}>
+            <Volume2 size={18} />
+            Read scene
+          </button>
+        )}
         <div className="story-scene-progress" aria-label="Story scenes ready">
           {Array.from({ length: expectedScenes }).map((_, i) => (
             <span key={i} className={`story-scene-dot ${i < totalReady ? "ready" : "pending"} ${i === sceneIndex ? "current" : ""}`} />
@@ -2256,11 +2394,22 @@ function PictureGameInline({
     <div className="inline-activity game">
       <div>
         <h3>Which one is a {target.word}?</h3>
+        <button className="secondary-button picture-prompt-audio" type="button" onClick={() => speak(target.word, 0.9)}>
+          <Volume2 size={18} />
+          Hear the word
+        </button>
         <div className="mini-choice-grid">
-          {choices.map((word, index) => (
-            <button className="picture-choice" key={word.id} onClick={() => choose(word)}>
-              <img src={getWordImage(pack, word.id)} alt={`picture choice ${index + 1}`} />
-              <span>Choice {index + 1}</span>
+          {choices.map((word) => (
+            <button
+              className="picture-choice"
+              key={word.id}
+              onClick={() => choose(word)}
+              onMouseEnter={() => speak(word.word, 0.95)}
+              onFocus={() => speak(word.word, 0.95)}
+            >
+              <img src={getWordImage(pack, word.id)} alt={`${word.word} picture`} />
+              <span>{word.word}</span>
+              <small>{word.meaningZh}</small>
               {selectedId === word.id && selectedCorrect && <Check className="choice-check" />}
             </button>
           ))}
@@ -2616,6 +2765,7 @@ export function RewardInline({
   const [gameComplete, setGameComplete] = useState(false);
   const [selectedCell, setSelectedCell] = useState<RewardCell | null>(null);
   const [pairFlash, setPairFlash] = useState<"match" | "miss" | null>(null);
+  const [rocketStickers, setRocketStickers] = useState<string[]>([]);
   const [board, setBoard] = useState<RewardBoard>(() =>
     buildRewardBoard({
       words: pack.words,
@@ -2645,6 +2795,7 @@ export function RewardInline({
     setGameComplete(false);
     setSelectedCell(null);
     setPairFlash(null);
+    setRocketStickers([]);
   }, [pack.id, activeGame]);
 
   function clearTile(row: number, col: number) {
@@ -2782,6 +2933,16 @@ export function RewardInline({
               {inFlight && video.progress > 0 && (
                 <progress className="video-progress" max={100} value={video.progress} aria-label="Reward video progress" />
               )}
+              {inFlight && (
+                <RocketDecoratingLoop
+                  stickers={rocketStickers}
+                  onAddSticker={() => {
+                    const stickerSet = ["star", "zap", "heart", "moon", "gem"];
+                    setRocketStickers((current) => [...current, stickerSet[current.length % stickerSet.length]].slice(-8));
+                    playFeedback("correct");
+                  }}
+                />
+              )}
             </div>
           )}
           <div className="button-row centered">
@@ -2801,6 +2962,22 @@ export function RewardInline({
       <div className="button-row centered">
         <button className="secondary-button" onClick={onSummary}>Summary</button>
       </div>
+    </div>
+  );
+}
+
+function RocketDecoratingLoop({ stickers, onAddSticker }: { stickers: string[]; onAddSticker: () => void }) {
+  return (
+    <div className="rocket-loop" aria-label="Decorate the delivery rocket">
+      <button className="rocket-button" type="button" onClick={onAddSticker}>
+        <span className="rocket-body" aria-hidden="true">
+          <span className="rocket-window" />
+          {stickers.map((sticker, index) => (
+            <span className={`rocket-sticker ${sticker}`} key={`${sticker}-${index}`} />
+          ))}
+        </span>
+        <span>Tap to decorate the rocket</span>
+      </button>
     </div>
   );
 }
@@ -2954,11 +3131,15 @@ function MissionStepper({
 function TopBar({
   profile,
   missionTitle,
+  progress,
+  streakCount,
   compact,
   onSetup
 }: {
   profile: ChildProfile;
   missionTitle: string;
+  progress: ProgressStats;
+  streakCount: number;
   compact: boolean;
   onSetup: () => void;
 }) {
@@ -2980,10 +3161,13 @@ function TopBar({
         {!compact && (
           <>
             <span className="star-pill">
-              <Star size={19} fill="currentColor" /> 120
+              <Star size={19} fill="currentColor" /> {progress.stars}
             </span>
             <span className="star-pill gem-pill">
-              <Gem size={18} fill="currentColor" /> 25
+              <Gem size={18} fill="currentColor" /> {progress.gems}
+            </span>
+            <span className="star-pill streak-pill">
+              <Sparkles size={18} /> {Math.max(streakCount, 0)}
             </span>
           </>
         )}
