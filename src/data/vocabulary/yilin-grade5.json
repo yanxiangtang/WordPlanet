@@ -1,0 +1,313 @@
+{
+  "id": "yilin-grade5",
+  "name": "译林版五年级",
+  "description": "译林版小学英语五年级词汇表",
+  "sourceNote": "译林版小学英语五年级词汇表整理；不同地区或新版教材可能有少量差异，请以课本 Word lists 为准。",
+  "books": [
+    {
+      "id": "5A",
+      "name": "译林版五年级上册",
+      "units": [
+        {
+          "unit": 1,
+          "title": "Goldilocks and the three bears",
+          "words": [
+            { "word": "Goldilocks", "meaning": "金凤花姑娘", "type": "noun" },
+            { "word": "bear", "meaning": "熊", "type": "noun" },
+            { "word": "soup", "meaning": "汤", "type": "noun" },
+            { "word": "house", "meaning": "房子", "type": "noun" },
+            { "word": "forest", "meaning": "森林", "type": "noun" },
+            { "word": "kitchen", "meaning": "厨房", "type": "noun" },
+            { "word": "hot", "meaning": "烫的；热的", "type": "adjective" },
+            { "word": "cold", "meaning": "冷的", "type": "adjective" },
+            { "word": "just right", "meaning": "正合适", "type": "phrase" },
+            { "word": "hard", "meaning": "硬的", "type": "adjective" },
+            { "word": "soft", "meaning": "软的", "type": "adjective" },
+            { "word": "enter", "meaning": "进入", "type": "verb" },
+            { "word": "try", "meaning": "试", "type": "verb" }
+          ]
+        },
+        {
+          "unit": 2,
+          "title": "A new student",
+          "words": [
+            { "word": "student", "meaning": "学生", "type": "noun" },
+            { "word": "around", "meaning": "在周围；到处", "type": "adverb" },
+            { "word": "classroom", "meaning": "教室", "type": "noun" },
+            { "word": "computer room", "meaning": "电脑房", "type": "noun" },
+            { "word": "library", "meaning": "图书馆", "type": "noun" },
+            { "word": "music room", "meaning": "音乐室", "type": "noun" },
+            { "word": "art room", "meaning": "美术室", "type": "noun" },
+            { "word": "playground", "meaning": "操场", "type": "noun" },
+            { "word": "table tennis room", "meaning": "乒乓球室", "type": "noun" },
+            { "word": "show", "meaning": "展示；给……看", "type": "verb" },
+            { "word": "next", "meaning": "下一个；接下去的", "type": "adjective" },
+            { "word": "floor", "meaning": "楼层；地板", "type": "noun" }
+          ]
+        },
+        {
+          "unit": 3,
+          "title": "Our animal friends",
+          "words": [
+            { "word": "animal", "meaning": "动物", "type": "noun" },
+            { "word": "wing", "meaning": "翅膀", "type": "noun" },
+            { "word": "leg", "meaning": "腿", "type": "noun" },
+            { "word": "tail", "meaning": "尾巴", "type": "noun" },
+            { "word": "body", "meaning": "身体", "type": "noun" },
+            { "word": "head", "meaning": "头", "type": "noun" },
+            { "word": "fly", "meaning": "飞", "type": "verb" },
+            { "word": "walk", "meaning": "走；步行", "type": "verb" },
+            { "word": "run fast", "meaning": "跑得快", "type": "phrase" },
+            { "word": "tortoise", "meaning": "乌龟", "type": "noun" },
+            { "word": "parrot", "meaning": "鹦鹉", "type": "noun" }
+          ]
+        },
+        {
+          "unit": 4,
+          "title": "Hobbies",
+          "words": [
+            { "word": "hobby", "meaning": "爱好", "type": "noun" },
+            { "word": "cook", "meaning": "烹饪；做饭", "type": "verb" },
+            { "word": "read", "meaning": "读；看（书）", "type": "verb" },
+            { "word": "story", "meaning": "故事", "type": "noun" },
+            { "word": "paint", "meaning": "画画", "type": "verb" },
+            { "word": "collect", "meaning": "收集", "type": "verb" },
+            { "word": "stamp", "meaning": "邮票", "type": "noun" },
+            { "word": "ride", "meaning": "骑", "type": "verb" },
+            { "word": "bike", "meaning": "自行车", "type": "noun" },
+            { "word": "take", "meaning": "拍（照）", "type": "verb" },
+            { "word": "photo", "meaning": "照片", "type": "noun" },
+            { "word": "card", "meaning": "卡片；贺卡", "type": "noun" }
+          ]
+        },
+        {
+          "unit": 5,
+          "title": "What do they do?",
+          "words": [
+            { "word": "doctor", "meaning": "医生", "type": "noun" },
+            { "word": "nurse", "meaning": "护士", "type": "noun" },
+            { "word": "teacher", "meaning": "教师", "type": "noun" },
+            { "word": "worker", "meaning": "工人", "type": "noun" },
+            { "word": "writer", "meaning": "作家", "type": "noun" },
+            { "word": "driver", "meaning": "司机", "type": "noun" },
+            { "word": "farmer", "meaning": "农民", "type": "noun" },
+            { "word": "cook", "meaning": "厨师", "type": "noun" },
+            { "word": "policeman", "meaning": "警察", "type": "noun" },
+            { "word": "factory", "meaning": "工厂", "type": "noun" },
+            { "word": "hospital", "meaning": "医院", "type": "noun" },
+            { "word": "people", "meaning": "人们", "type": "noun" }
+          ]
+        },
+        {
+          "unit": 6,
+          "title": "My e-friend",
+          "words": [
+            { "word": "e-friend", "meaning": "网友", "type": "noun" },
+            { "word": "country", "meaning": "国家", "type": "noun" },
+            { "word": "China", "meaning": "中国", "type": "noun" },
+            { "word": "the UK", "meaning": "英国", "type": "noun" },
+            { "word": "the USA", "meaning": "美国", "type": "noun" },
+            { "word": "Australia", "meaning": "澳大利亚", "type": "noun" },
+            { "word": "Canada", "meaning": "加拿大", "type": "noun" },
+            { "word": "live", "meaning": "居住", "type": "verb" },
+            { "word": "say", "meaning": "说", "type": "verb" },
+            { "word": "study", "meaning": "学习", "type": "verb" },
+            { "word": "old", "meaning": "……岁的；老的", "type": "adjective" },
+            { "word": "language", "meaning": "语言", "type": "noun" }
+          ]
+        },
+        {
+          "unit": 7,
+          "title": "At weekends",
+          "words": [
+            { "word": "at weekends", "meaning": "在周末", "type": "phrase" },
+            { "word": "weekend", "meaning": "周末", "type": "noun" },
+            { "word": "often", "meaning": "经常", "type": "adverb" },
+            { "word": "sometimes", "meaning": "有时", "type": "adverb" },
+            { "word": "always", "meaning": "总是", "type": "adverb" },
+            { "word": "watch", "meaning": "观看", "type": "verb" },
+            { "word": "TV show", "meaning": "电视节目", "type": "noun" },
+            { "word": "go shopping", "meaning": "去购物", "type": "phrase" },
+            { "word": "do housework", "meaning": "做家务", "type": "phrase" },
+            { "word": "visit", "meaning": "拜访；参观", "type": "verb" },
+            { "word": "grandparents", "meaning": "祖父母", "type": "noun" },
+            { "word": "Internet", "meaning": "互联网", "type": "noun" }
+          ]
+        },
+        {
+          "unit": 8,
+          "title": "At Christmas",
+          "words": [
+            { "word": "Christmas", "meaning": "圣诞节", "type": "noun" },
+            { "word": "Christmas tree", "meaning": "圣诞树", "type": "noun" },
+            { "word": "Father Christmas", "meaning": "圣诞老人", "type": "noun" },
+            { "word": "present", "meaning": "礼物", "type": "noun" },
+            { "word": "stocking", "meaning": "长袜", "type": "noun" },
+            { "word": "card", "meaning": "贺卡", "type": "noun" },
+            { "word": "December", "meaning": "十二月", "type": "noun" },
+            { "word": "put", "meaning": "放", "type": "verb" },
+            { "word": "before", "meaning": "在……之前", "type": "preposition" },
+            { "word": "wake", "meaning": "醒来", "type": "verb" },
+            { "word": "open", "meaning": "打开", "type": "verb" },
+            { "word": "shout", "meaning": "喊；叫", "type": "verb" }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "5B",
+      "name": "译林版五年级下册",
+      "units": [
+        {
+          "unit": 1,
+          "title": "Cinderella",
+          "words": [
+            { "word": "Cinderella", "meaning": "灰姑娘", "type": "noun" },
+            { "word": "live", "meaning": "居住；生活", "type": "verb" },
+            { "word": "want", "meaning": "想；想要", "type": "verb" },
+            { "word": "party", "meaning": "聚会；派对", "type": "noun" },
+            { "word": "go", "meaning": "去", "type": "verb" },
+            { "word": "but", "meaning": "但是", "type": "conjunction" },
+            { "word": "cry", "meaning": "哭", "type": "verb" },
+            { "word": "prince", "meaning": "王子", "type": "noun" },
+            { "word": "fairy", "meaning": "仙女", "type": "noun" },
+            { "word": "dress", "meaning": "连衣裙", "type": "noun" },
+            { "word": "shoe", "meaning": "鞋", "type": "noun" },
+            { "word": "try on", "meaning": "试穿", "type": "phrase" },
+            { "word": "fit", "meaning": "适合；合身", "type": "verb" }
+          ]
+        },
+        {
+          "unit": 2,
+          "title": "How do you come to school?",
+          "words": [
+            { "word": "come to school", "meaning": "来上学", "type": "phrase" },
+            { "word": "by bus", "meaning": "乘公共汽车", "type": "phrase" },
+            { "word": "by car", "meaning": "乘小汽车", "type": "phrase" },
+            { "word": "by metro", "meaning": "乘地铁", "type": "phrase" },
+            { "word": "by bike", "meaning": "骑自行车", "type": "phrase" },
+            { "word": "by taxi", "meaning": "乘出租车", "type": "phrase" },
+            { "word": "by train", "meaning": "乘火车", "type": "phrase" },
+            { "word": "by plane", "meaning": "乘飞机", "type": "phrase" },
+            { "word": "by ship", "meaning": "乘船", "type": "phrase" },
+            { "word": "on foot", "meaning": "步行", "type": "phrase" },
+            { "word": "near", "meaning": "在……附近", "type": "preposition" },
+            { "word": "far", "meaning": "远的", "type": "adjective" }
+          ]
+        },
+        {
+          "unit": 3,
+          "title": "Asking the way",
+          "words": [
+            { "word": "way", "meaning": "路；道路", "type": "noun" },
+            { "word": "excuse me", "meaning": "对不起；请问", "type": "phrase" },
+            { "word": "post office", "meaning": "邮局", "type": "noun" },
+            { "word": "supermarket", "meaning": "超市", "type": "noun" },
+            { "word": "bookshop", "meaning": "书店", "type": "noun" },
+            { "word": "cinema", "meaning": "电影院", "type": "noun" },
+            { "word": "hospital", "meaning": "医院", "type": "noun" },
+            { "word": "bus stop", "meaning": "公交车站", "type": "noun" },
+            { "word": "street", "meaning": "街道", "type": "noun" },
+            { "word": "turn", "meaning": "转弯", "type": "verb" },
+            { "word": "left", "meaning": "左", "type": "noun" },
+            { "word": "right", "meaning": "右", "type": "noun" },
+            { "word": "get off", "meaning": "下车", "type": "phrase" }
+          ]
+        },
+        {
+          "unit": 4,
+          "title": "Seeing the doctor",
+          "words": [
+            { "word": "see the doctor", "meaning": "看医生", "type": "phrase" },
+            { "word": "headache", "meaning": "头疼", "type": "noun" },
+            { "word": "toothache", "meaning": "牙疼", "type": "noun" },
+            { "word": "stomach ache", "meaning": "胃疼", "type": "noun" },
+            { "word": "fever", "meaning": "发烧", "type": "noun" },
+            { "word": "cough", "meaning": "咳嗽", "type": "noun" },
+            { "word": "cold", "meaning": "感冒", "type": "noun" },
+            { "word": "sweet", "meaning": "糖果", "type": "noun" },
+            { "word": "take", "meaning": "吃（药）", "type": "verb" },
+            { "word": "medicine", "meaning": "药", "type": "noun" },
+            { "word": "lie down", "meaning": "躺下", "type": "phrase" },
+            { "word": "drink water", "meaning": "喝水", "type": "phrase" }
+          ]
+        },
+        {
+          "unit": 5,
+          "title": "Helping our parents",
+          "words": [
+            { "word": "parent", "meaning": "父（母）亲", "type": "noun" },
+            { "word": "help", "meaning": "帮助", "type": "verb" },
+            { "word": "wash", "meaning": "洗", "type": "verb" },
+            { "word": "clean", "meaning": "打扫；清理", "type": "verb" },
+            { "word": "sweep", "meaning": "扫", "type": "verb" },
+            { "word": "floor", "meaning": "地板", "type": "noun" },
+            { "word": "table", "meaning": "桌子", "type": "noun" },
+            { "word": "cook", "meaning": "烹饪", "type": "verb" },
+            { "word": "meal", "meaning": "饭；餐", "type": "noun" },
+            { "word": "wash clothes", "meaning": "洗衣服", "type": "phrase" },
+            { "word": "homework", "meaning": "家庭作业", "type": "noun" },
+            { "word": "busy", "meaning": "忙碌的", "type": "adjective" }
+          ]
+        },
+        {
+          "unit": 6,
+          "title": "In the kitchen",
+          "words": [
+            { "word": "kitchen", "meaning": "厨房", "type": "noun" },
+            { "word": "cup", "meaning": "杯子", "type": "noun" },
+            { "word": "bowl", "meaning": "碗", "type": "noun" },
+            { "word": "spoon", "meaning": "勺", "type": "noun" },
+            { "word": "fork", "meaning": "叉子", "type": "noun" },
+            { "word": "knife", "meaning": "刀", "type": "noun" },
+            { "word": "plate", "meaning": "盘子", "type": "noun" },
+            { "word": "chopsticks", "meaning": "筷子", "type": "noun" },
+            { "word": "put", "meaning": "放", "type": "verb" },
+            { "word": "cut", "meaning": "切；割", "type": "verb" },
+            { "word": "have a meal", "meaning": "吃饭", "type": "phrase" },
+            { "word": "egg", "meaning": "鸡蛋", "type": "noun" }
+          ]
+        },
+        {
+          "unit": 7,
+          "title": "Chinese festivals",
+          "words": [
+            { "word": "festival", "meaning": "节日", "type": "noun" },
+            { "word": "Spring Festival", "meaning": "春节", "type": "noun" },
+            { "word": "Dragon Boat Festival", "meaning": "端午节", "type": "noun" },
+            { "word": "Mid-Autumn Festival", "meaning": "中秋节", "type": "noun" },
+            { "word": "Double Ninth Festival", "meaning": "重阳节", "type": "noun" },
+            { "word": "dumpling", "meaning": "饺子", "type": "noun" },
+            { "word": "rice dumpling", "meaning": "粽子", "type": "noun" },
+            { "word": "moon cake", "meaning": "月饼", "type": "noun" },
+            { "word": "fireworks", "meaning": "焰火", "type": "noun" },
+            { "word": "lion dance", "meaning": "舞狮", "type": "noun" },
+            { "word": "dragon boat race", "meaning": "赛龙舟", "type": "noun" },
+            { "word": "lantern", "meaning": "灯笼", "type": "noun" }
+          ]
+        },
+        {
+          "unit": 8,
+          "title": "Birthdays",
+          "words": [
+            { "word": "birthday", "meaning": "生日", "type": "noun" },
+            { "word": "January", "meaning": "一月", "type": "noun" },
+            { "word": "February", "meaning": "二月", "type": "noun" },
+            { "word": "March", "meaning": "三月", "type": "noun" },
+            { "word": "April", "meaning": "四月", "type": "noun" },
+            { "word": "May", "meaning": "五月", "type": "noun" },
+            { "word": "June", "meaning": "六月", "type": "noun" },
+            { "word": "July", "meaning": "七月", "type": "noun" },
+            { "word": "August", "meaning": "八月", "type": "noun" },
+            { "word": "September", "meaning": "九月", "type": "noun" },
+            { "word": "October", "meaning": "十月", "type": "noun" },
+            { "word": "November", "meaning": "十一月", "type": "noun" },
+            { "word": "December", "meaning": "十二月", "type": "noun" },
+            { "word": "date", "meaning": "日期", "type": "noun" },
+            { "word": "candle", "meaning": "蜡烛", "type": "noun" }
+          ]
+        }
+      ]
+    }
+  ]
+}

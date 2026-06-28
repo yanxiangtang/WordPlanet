@@ -1,0 +1,308 @@
+{
+  "id": "yilin-grade6",
+  "name": "译林版六年级",
+  "description": "译林版小学英语六年级词汇表",
+  "sourceNote": "译林版小学英语六年级词汇表整理；不同地区或新版教材可能有少量差异，请以课本 Word lists 为准。",
+  "books": [
+    {
+      "id": "6A",
+      "name": "译林版六年级上册",
+      "units": [
+        {
+          "unit": 1,
+          "title": "The king's new clothes",
+          "words": [
+            { "word": "king", "meaning": "国王", "type": "noun" },
+            { "word": "clothes", "meaning": "衣服", "type": "noun" },
+            { "word": "long ago", "meaning": "很久以前", "type": "phrase" },
+            { "word": "magic", "meaning": "魔法的", "type": "adjective" },
+            { "word": "clever", "meaning": "聪明的", "type": "adjective" },
+            { "word": "foolish", "meaning": "愚蠢的", "type": "adjective" },
+            { "word": "wear", "meaning": "穿；戴", "type": "verb" },
+            { "word": "laugh at", "meaning": "嘲笑", "type": "phrase" },
+            { "word": "say", "meaning": "说", "type": "verb" },
+            { "word": "show", "meaning": "展示", "type": "verb" },
+            { "word": "child", "meaning": "孩子", "type": "noun" },
+            { "word": "everyone", "meaning": "每个人", "type": "pronoun" }
+          ]
+        },
+        {
+          "unit": 2,
+          "title": "What a day!",
+          "words": [
+            { "word": "what a day", "meaning": "多么……的一天", "type": "phrase" },
+            { "word": "kite", "meaning": "风筝", "type": "noun" },
+            { "word": "morning", "meaning": "早上；上午", "type": "noun" },
+            { "word": "cloud", "meaning": "云", "type": "noun" },
+            { "word": "sky", "meaning": "天空", "type": "noun" },
+            { "word": "wind", "meaning": "风", "type": "noun" },
+            { "word": "rain", "meaning": "雨；下雨", "type": "noun/verb" },
+            { "word": "got wet", "meaning": "弄湿了", "type": "phrase" },
+            { "word": "ran", "meaning": "跑（run 的过去式）", "type": "verb" },
+            { "word": "felt", "meaning": "感觉（feel 的过去式）", "type": "verb" },
+            { "word": "diary", "meaning": "日记", "type": "noun" },
+            { "word": "interesting", "meaning": "有趣的", "type": "adjective" }
+          ]
+        },
+        {
+          "unit": 3,
+          "title": "Holiday fun",
+          "words": [
+            { "word": "holiday", "meaning": "假期", "type": "noun" },
+            { "word": "fun", "meaning": "乐趣；好玩的事", "type": "noun" },
+            { "word": "National Day", "meaning": "国庆节", "type": "noun" },
+            { "word": "Beijing", "meaning": "北京", "type": "noun" },
+            { "word": "Great Wall", "meaning": "长城", "type": "noun" },
+            { "word": "visited", "meaning": "参观（visit 的过去式）", "type": "verb" },
+            { "word": "went", "meaning": "去（go 的过去式）", "type": "verb" },
+            { "word": "watched", "meaning": "观看（watch 的过去式）", "type": "verb" },
+            { "word": "ate", "meaning": "吃（eat 的过去式）", "type": "verb" },
+            { "word": "bought", "meaning": "买（buy 的过去式）", "type": "verb" },
+            { "word": "took", "meaning": "拍（take 的过去式）", "type": "verb" },
+            { "word": "great", "meaning": "极好的", "type": "adjective" }
+          ]
+        },
+        {
+          "unit": 4,
+          "title": "Then and now",
+          "words": [
+            { "word": "then", "meaning": "那时；当时", "type": "adverb" },
+            { "word": "now", "meaning": "现在", "type": "adverb" },
+            { "word": "ago", "meaning": "以前", "type": "adverb" },
+            { "word": "could", "meaning": "能；会（can 的过去式）", "type": "verb" },
+            { "word": "couldn't", "fullForm": "could not", "meaning": "不能", "type": "contraction" },
+            { "word": "without", "meaning": "没有", "type": "preposition" },
+            { "word": "phone", "meaning": "电话", "type": "noun" },
+            { "word": "radio", "meaning": "收音机", "type": "noun" },
+            { "word": "letter", "meaning": "信", "type": "noun" },
+            { "word": "email", "meaning": "电子邮件", "type": "noun" },
+            { "word": "online", "meaning": "在线的", "type": "adjective" },
+            { "word": "easy", "meaning": "容易的", "type": "adjective" }
+          ]
+        },
+        {
+          "unit": 5,
+          "title": "Signs",
+          "words": [
+            { "word": "sign", "meaning": "标志；指示牌", "type": "noun" },
+            { "word": "mean", "meaning": "意思是", "type": "verb" },
+            { "word": "no eating or drinking", "meaning": "禁止饮食", "type": "phrase" },
+            { "word": "no parking", "meaning": "禁止停车", "type": "phrase" },
+            { "word": "no littering", "meaning": "禁止乱扔垃圾", "type": "phrase" },
+            { "word": "danger", "meaning": "危险", "type": "noun" },
+            { "word": "quiet", "meaning": "安静", "type": "adjective" },
+            { "word": "be quiet", "meaning": "保持安静", "type": "phrase" },
+            { "word": "wet floor", "meaning": "地板湿滑", "type": "phrase" },
+            { "word": "careful", "meaning": "小心的", "type": "adjective" },
+            { "word": "shopping centre", "meaning": "购物中心", "type": "noun" },
+            { "word": "park", "meaning": "停车", "type": "verb" }
+          ]
+        },
+        {
+          "unit": 6,
+          "title": "Keep our city clean",
+          "words": [
+            { "word": "keep", "meaning": "保持", "type": "verb" },
+            { "word": "city", "meaning": "城市", "type": "noun" },
+            { "word": "clean", "meaning": "干净的", "type": "adjective" },
+            { "word": "dirty", "meaning": "脏的", "type": "adjective" },
+            { "word": "rubbish", "meaning": "垃圾", "type": "noun" },
+            { "word": "ground", "meaning": "地面", "type": "noun" },
+            { "word": "litter", "meaning": "乱扔垃圾", "type": "verb" },
+            { "word": "everywhere", "meaning": "到处", "type": "adverb" },
+            { "word": "bin", "meaning": "垃圾桶", "type": "noun" },
+            { "word": "pollute", "meaning": "污染", "type": "verb" },
+            { "word": "smoke", "meaning": "烟；吸烟", "type": "noun/verb" },
+            { "word": "factory", "meaning": "工厂", "type": "noun" }
+          ]
+        },
+        {
+          "unit": 7,
+          "title": "Protect the Earth",
+          "words": [
+            { "word": "protect", "meaning": "保护", "type": "verb" },
+            { "word": "Earth", "meaning": "地球", "type": "noun" },
+            { "word": "save", "meaning": "节约；拯救", "type": "verb" },
+            { "word": "energy", "meaning": "能源；能量", "type": "noun" },
+            { "word": "electricity", "meaning": "电", "type": "noun" },
+            { "word": "wood", "meaning": "木头", "type": "noun" },
+            { "word": "tree", "meaning": "树", "type": "noun" },
+            { "word": "metal", "meaning": "金属", "type": "noun" },
+            { "word": "glass", "meaning": "玻璃", "type": "noun" },
+            { "word": "plastic", "meaning": "塑料", "type": "noun" },
+            { "word": "use", "meaning": "使用", "type": "verb" },
+            { "word": "again", "meaning": "再一次", "type": "adverb" }
+          ]
+        },
+        {
+          "unit": 8,
+          "title": "Chinese New Year",
+          "words": [
+            { "word": "Chinese New Year", "meaning": "中国新年", "type": "noun" },
+            { "word": "going to", "meaning": "打算；将要", "type": "phrase" },
+            { "word": "buy", "meaning": "买", "type": "verb" },
+            { "word": "new clothes", "meaning": "新衣服", "type": "phrase" },
+            { "word": "fireworks", "meaning": "焰火", "type": "noun" },
+            { "word": "couplet", "meaning": "对联", "type": "noun" },
+            { "word": "sweep the floor", "meaning": "扫地", "type": "phrase" },
+            { "word": "make dumplings", "meaning": "包饺子", "type": "phrase" },
+            { "word": "watch fireworks", "meaning": "看烟花", "type": "phrase" },
+            { "word": "get lucky money", "meaning": "得到压岁钱", "type": "phrase" },
+            { "word": "tomorrow", "meaning": "明天", "type": "noun" },
+            { "word": "next week", "meaning": "下周", "type": "phrase" }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "6B",
+      "name": "译林版六年级下册",
+      "units": [
+        {
+          "unit": 1,
+          "title": "The lion and the mouse",
+          "words": [
+            { "word": "lion", "meaning": "狮子", "type": "noun" },
+            { "word": "mouse", "meaning": "老鼠", "type": "noun" },
+            { "word": "wake up", "meaning": "醒来", "type": "phrase" },
+            { "word": "angry", "meaning": "生气的", "type": "adjective" },
+            { "word": "afraid", "meaning": "害怕的", "type": "adjective" },
+            { "word": "catch", "meaning": "抓住", "type": "verb" },
+            { "word": "let go", "meaning": "放开", "type": "phrase" },
+            { "word": "net", "meaning": "网", "type": "noun" },
+            { "word": "bite", "meaning": "咬", "type": "verb" },
+            { "word": "save", "meaning": "拯救", "type": "verb" },
+            { "word": "small", "meaning": "小的", "type": "adjective" },
+            { "word": "strong", "meaning": "强壮的", "type": "adjective" }
+          ]
+        },
+        {
+          "unit": 2,
+          "title": "Good habits",
+          "words": [
+            { "word": "habit", "meaning": "习惯", "type": "noun" },
+            { "word": "good", "meaning": "好的", "type": "adjective" },
+            { "word": "bad", "meaning": "坏的", "type": "adjective" },
+            { "word": "early", "meaning": "早的", "type": "adjective" },
+            { "word": "late", "meaning": "晚的", "type": "adjective" },
+            { "word": "before", "meaning": "在……之前", "type": "preposition" },
+            { "word": "tidy", "meaning": "整理", "type": "verb" },
+            { "word": "brush teeth", "meaning": "刷牙", "type": "phrase" },
+            { "word": "wash hands", "meaning": "洗手", "type": "phrase" },
+            { "word": "go to bed early", "meaning": "早睡", "type": "phrase" },
+            { "word": "finish", "meaning": "完成", "type": "verb" },
+            { "word": "never", "meaning": "从不", "type": "adverb" }
+          ]
+        },
+        {
+          "unit": 3,
+          "title": "A healthy diet",
+          "words": [
+            { "word": "healthy", "meaning": "健康的", "type": "adjective" },
+            { "word": "diet", "meaning": "饮食", "type": "noun" },
+            { "word": "meat", "meaning": "肉", "type": "noun" },
+            { "word": "vegetable", "meaning": "蔬菜", "type": "noun" },
+            { "word": "fruit", "meaning": "水果", "type": "noun" },
+            { "word": "milk", "meaning": "牛奶", "type": "noun" },
+            { "word": "rice", "meaning": "米饭", "type": "noun" },
+            { "word": "noodles", "meaning": "面条", "type": "noun" },
+            { "word": "a lot of", "meaning": "许多", "type": "phrase" },
+            { "word": "a little", "meaning": "一点儿", "type": "phrase" },
+            { "word": "a few", "meaning": "一些", "type": "phrase" },
+            { "word": "every day", "meaning": "每天", "type": "phrase" }
+          ]
+        },
+        {
+          "unit": 4,
+          "title": "Road safety",
+          "words": [
+            { "word": "road", "meaning": "公路；马路", "type": "noun" },
+            { "word": "safety", "meaning": "安全", "type": "noun" },
+            { "word": "safe", "meaning": "安全的", "type": "adjective" },
+            { "word": "must", "meaning": "必须", "type": "verb" },
+            { "word": "traffic", "meaning": "交通", "type": "noun" },
+            { "word": "traffic light", "meaning": "交通灯", "type": "noun" },
+            { "word": "zebra crossing", "meaning": "斑马线", "type": "noun" },
+            { "word": "wait", "meaning": "等待", "type": "verb" },
+            { "word": "stop", "meaning": "停止", "type": "verb" },
+            { "word": "cross", "meaning": "穿过", "type": "verb" },
+            { "word": "rule", "meaning": "规则", "type": "noun" },
+            { "word": "pavement", "meaning": "人行道", "type": "noun" }
+          ]
+        },
+        {
+          "unit": 5,
+          "title": "A party",
+          "words": [
+            { "word": "party", "meaning": "聚会", "type": "noun" },
+            { "word": "everybody", "meaning": "每个人", "type": "pronoun" },
+            { "word": "invite", "meaning": "邀请", "type": "verb" },
+            { "word": "bring", "meaning": "带来", "type": "verb" },
+            { "word": "sandwich", "meaning": "三明治", "type": "noun" },
+            { "word": "biscuit", "meaning": "饼干", "type": "noun" },
+            { "word": "drink", "meaning": "饮料", "type": "noun" },
+            { "word": "candy", "meaning": "糖果", "type": "noun" },
+            { "word": "balloon", "meaning": "气球", "type": "noun" },
+            { "word": "blow up", "meaning": "吹起", "type": "phrase" },
+            { "word": "everything", "meaning": "每件事；一切", "type": "pronoun" },
+            { "word": "ready", "meaning": "准备好的", "type": "adjective" }
+          ]
+        },
+        {
+          "unit": 6,
+          "title": "An interesting country",
+          "words": [
+            { "word": "country", "meaning": "国家", "type": "noun" },
+            { "word": "interesting", "meaning": "有趣的", "type": "adjective" },
+            { "word": "Australia", "meaning": "澳大利亚", "type": "noun" },
+            { "word": "Canberra", "meaning": "堪培拉", "type": "noun" },
+            { "word": "kangaroo", "meaning": "袋鼠", "type": "noun" },
+            { "word": "koala", "meaning": "树袋熊", "type": "noun" },
+            { "word": "English", "meaning": "英语", "type": "noun" },
+            { "word": "south", "meaning": "南方", "type": "noun" },
+            { "word": "north", "meaning": "北方", "type": "noun" },
+            { "word": "east", "meaning": "东方", "type": "noun" },
+            { "word": "west", "meaning": "西方", "type": "noun" },
+            { "word": "kilometre", "meaning": "公里；千米", "type": "noun" }
+          ]
+        },
+        {
+          "unit": 7,
+          "title": "Summer holiday plans",
+          "words": [
+            { "word": "plan", "meaning": "计划", "type": "noun" },
+            { "word": "summer holiday", "meaning": "暑假", "type": "noun" },
+            { "word": "Hong Kong", "meaning": "香港", "type": "noun" },
+            { "word": "Shanghai", "meaning": "上海", "type": "noun" },
+            { "word": "Taipei", "meaning": "台北", "type": "noun" },
+            { "word": "Singapore", "meaning": "新加坡", "type": "noun" },
+            { "word": "Disneyland", "meaning": "迪士尼乐园", "type": "noun" },
+            { "word": "by plane", "meaning": "乘飞机", "type": "phrase" },
+            { "word": "by train", "meaning": "乘火车", "type": "phrase" },
+            { "word": "by ship", "meaning": "乘船", "type": "phrase" },
+            { "word": "go camping", "meaning": "去野营", "type": "phrase" },
+            { "word": "go fishing", "meaning": "去钓鱼", "type": "phrase" }
+          ]
+        },
+        {
+          "unit": 8,
+          "title": "Our dreams",
+          "words": [
+            { "word": "dream", "meaning": "梦想", "type": "noun" },
+            { "word": "future", "meaning": "未来", "type": "noun" },
+            { "word": "scientist", "meaning": "科学家", "type": "noun" },
+            { "word": "dancer", "meaning": "舞蹈演员", "type": "noun" },
+            { "word": "pianist", "meaning": "钢琴家", "type": "noun" },
+            { "word": "football player", "meaning": "足球运动员", "type": "noun" },
+            { "word": "artist", "meaning": "艺术家；画家", "type": "noun" },
+            { "word": "engineer", "meaning": "工程师", "type": "noun" },
+            { "word": "astronaut", "meaning": "宇航员", "type": "noun" },
+            { "word": "be good at", "meaning": "擅长", "type": "phrase" },
+            { "word": "want to be", "meaning": "想要成为", "type": "phrase" },
+            { "word": "work hard", "meaning": "努力工作（学习）", "type": "phrase" }
+          ]
+        }
+      ]
+    }
+  ]
+}

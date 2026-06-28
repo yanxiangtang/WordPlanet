@@ -1,0 +1,300 @@
+{
+  "id": "yilin-grade4",
+  "name": "译林版四年级",
+  "description": "译林版小学英语四年级词汇表",
+  "sourceNote": "译林版小学英语四年级词汇表整理；不同地区或新版教材可能有少量差异，请以课本 Word lists 为准。",
+  "books": [
+    {
+      "id": "4A",
+      "name": "译林版四年级上册",
+      "units": [
+        {
+          "unit": 1,
+          "title": "I like dogs",
+          "words": [
+            { "word": "like", "meaning": "喜欢", "type": "verb" },
+            { "word": "dog", "meaning": "狗", "type": "noun" },
+            { "word": "cat", "meaning": "猫", "type": "noun" },
+            { "word": "fish", "meaning": "鱼", "type": "noun" },
+            { "word": "monkey", "meaning": "猴子", "type": "noun" },
+            { "word": "panda", "meaning": "熊猫", "type": "noun" },
+            { "word": "tiger", "meaning": "老虎", "type": "noun" },
+            { "word": "elephant", "meaning": "大象", "type": "noun" },
+            { "word": "lion", "meaning": "狮子", "type": "noun" },
+            { "word": "horse", "meaning": "马", "type": "noun" },
+            { "word": "rabbit", "meaning": "兔子", "type": "noun" },
+            { "word": "do", "meaning": "做；干", "type": "verb" },
+            { "word": "you", "meaning": "你；你们", "type": "pronoun" },
+            { "word": "have", "meaning": "有", "type": "verb" }
+          ]
+        },
+        {
+          "unit": 2,
+          "title": "Let's make a fruit salad",
+          "words": [
+            { "word": "let's", "fullForm": "let us", "meaning": "让我们", "type": "contraction" },
+            { "word": "make", "meaning": "做；制作", "type": "verb" },
+            { "word": "fruit", "meaning": "水果", "type": "noun" },
+            { "word": "salad", "meaning": "色拉", "type": "noun" },
+            { "word": "banana", "meaning": "香蕉", "type": "noun" },
+            { "word": "grape", "meaning": "葡萄", "type": "noun" },
+            { "word": "mango", "meaning": "芒果", "type": "noun" },
+            { "word": "pineapple", "meaning": "菠萝", "type": "noun" },
+            { "word": "any", "meaning": "一些；任何", "type": "pronoun" },
+            { "word": "wait", "meaning": "等候", "type": "verb" },
+            { "word": "see", "meaning": "看见", "type": "verb" }
+          ]
+        },
+        {
+          "unit": 3,
+          "title": "How many?",
+          "words": [
+            { "word": "how many", "meaning": "多少", "type": "phrase" },
+            { "word": "thirteen", "meaning": "十三", "type": "number" },
+            { "word": "fourteen", "meaning": "十四", "type": "number" },
+            { "word": "fifteen", "meaning": "十五", "type": "number" },
+            { "word": "sixteen", "meaning": "十六", "type": "number" },
+            { "word": "seventeen", "meaning": "十七", "type": "number" },
+            { "word": "eighteen", "meaning": "十八", "type": "number" },
+            { "word": "nineteen", "meaning": "十九", "type": "number" },
+            { "word": "twenty", "meaning": "二十", "type": "number" },
+            { "word": "boat", "meaning": "船", "type": "noun" },
+            { "word": "kite", "meaning": "风筝", "type": "noun" },
+            { "word": "many", "meaning": "许多", "type": "adjective" }
+          ]
+        },
+        {
+          "unit": 4,
+          "title": "I can play basketball",
+          "words": [
+            { "word": "can", "meaning": "能；会", "type": "verb" },
+            { "word": "play", "meaning": "玩；做（游戏）", "type": "verb" },
+            { "word": "basketball", "meaning": "篮球", "type": "noun" },
+            { "word": "football", "meaning": "足球", "type": "noun" },
+            { "word": "table tennis", "meaning": "乒乓球", "type": "noun" },
+            { "word": "jump", "meaning": "跳", "type": "verb" },
+            { "word": "swim", "meaning": "游泳", "type": "verb" },
+            { "word": "skate", "meaning": "溜冰", "type": "verb" },
+            { "word": "ski", "meaning": "滑雪", "type": "verb" },
+            { "word": "fly", "meaning": "飞；放（风筝）", "type": "verb" },
+            { "word": "cannot", "meaning": "不能；不会", "type": "verb" },
+            { "word": "can't", "fullForm": "cannot", "meaning": "不能；不会", "type": "contraction" }
+          ]
+        },
+        {
+          "unit": 5,
+          "title": "Our new home",
+          "words": [
+            { "word": "our", "meaning": "我们的", "type": "pronoun" },
+            { "word": "home", "meaning": "家", "type": "noun" },
+            { "word": "bedroom", "meaning": "卧室", "type": "noun" },
+            { "word": "living room", "meaning": "起居室；客厅", "type": "noun" },
+            { "word": "kitchen", "meaning": "厨房", "type": "noun" },
+            { "word": "bathroom", "meaning": "浴室", "type": "noun" },
+            { "word": "study", "meaning": "书房", "type": "noun" },
+            { "word": "phone", "meaning": "电话", "type": "noun" },
+            { "word": "fridge", "meaning": "冰箱", "type": "noun" },
+            { "word": "TV", "meaning": "电视机", "type": "noun" },
+            { "word": "sofa", "meaning": "沙发", "type": "noun" },
+            { "word": "where are", "meaning": "在哪里", "type": "phrase" }
+          ]
+        },
+        {
+          "unit": 6,
+          "title": "At the snack bar",
+          "words": [
+            { "word": "at", "meaning": "在……（地点）", "type": "preposition" },
+            { "word": "snack bar", "meaning": "小吃店", "type": "noun" },
+            { "word": "noodles", "meaning": "面条", "type": "noun" },
+            { "word": "rice", "meaning": "米饭", "type": "noun" },
+            { "word": "biscuit", "meaning": "饼干", "type": "noun" },
+            { "word": "bread", "meaning": "面包", "type": "noun" },
+            { "word": "tea", "meaning": "茶", "type": "noun" },
+            { "word": "coffee", "meaning": "咖啡", "type": "noun" },
+            { "word": "juice", "meaning": "果汁", "type": "noun" },
+            { "word": "water", "meaning": "水", "type": "noun" },
+            { "word": "some", "meaning": "一些", "type": "pronoun" },
+            { "word": "anything else", "meaning": "其他东西", "type": "phrase" }
+          ]
+        },
+        {
+          "unit": 7,
+          "title": "How much?",
+          "words": [
+            { "word": "how much", "meaning": "多少钱", "type": "phrase" },
+            { "word": "yuan", "meaning": "元", "type": "noun" },
+            { "word": "shoe", "meaning": "鞋", "type": "noun" },
+            { "word": "sock", "meaning": "短袜", "type": "noun" },
+            { "word": "umbrella", "meaning": "雨伞", "type": "noun" },
+            { "word": "fan", "meaning": "扇子；电扇", "type": "noun" },
+            { "word": "scarf", "meaning": "围巾", "type": "noun" },
+            { "word": "glove", "meaning": "手套", "type": "noun" },
+            { "word": "purse", "meaning": "钱包", "type": "noun" },
+            { "word": "tie", "meaning": "领带", "type": "noun" },
+            { "word": "shop", "meaning": "商店", "type": "noun" }
+          ]
+        },
+        {
+          "unit": 8,
+          "title": "Dolls",
+          "words": [
+            { "word": "big", "meaning": "大的", "type": "adjective" },
+            { "word": "small", "meaning": "小的", "type": "adjective" },
+            { "word": "long", "meaning": "长的", "type": "adjective" },
+            { "word": "short", "meaning": "短的；矮的", "type": "adjective" },
+            { "word": "tall", "meaning": "高的", "type": "adjective" },
+            { "word": "thin", "meaning": "瘦的", "type": "adjective" },
+            { "word": "fat", "meaning": "胖的", "type": "adjective" },
+            { "word": "hair", "meaning": "头发", "type": "noun" },
+            { "word": "eye", "meaning": "眼睛", "type": "noun" },
+            { "word": "ear", "meaning": "耳朵", "type": "noun" },
+            { "word": "nose", "meaning": "鼻子", "type": "noun" },
+            { "word": "mouth", "meaning": "嘴", "type": "noun" }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "4B",
+      "name": "译林版四年级下册",
+      "units": [
+        {
+          "unit": 1,
+          "title": "Our school subjects",
+          "words": [
+            { "word": "school", "meaning": "学校", "type": "noun" },
+            { "word": "subject", "meaning": "学科；科目", "type": "noun" },
+            { "word": "Chinese", "meaning": "语文；中文", "type": "noun" },
+            { "word": "Maths", "meaning": "数学", "type": "noun" },
+            { "word": "Art", "meaning": "美术", "type": "noun" },
+            { "word": "Music", "meaning": "音乐", "type": "noun" },
+            { "word": "PE", "fullForm": "Physical Education", "meaning": "体育", "type": "noun" },
+            { "word": "Science", "meaning": "科学", "type": "noun" },
+            { "word": "have", "meaning": "有；上（课）", "type": "verb" },
+            { "word": "welcome", "meaning": "欢迎", "type": "verb" }
+          ]
+        },
+        {
+          "unit": 2,
+          "title": "After school",
+          "words": [
+            { "word": "after school", "meaning": "放学后", "type": "phrase" },
+            { "word": "time", "meaning": "时间", "type": "noun" },
+            { "word": "Monday", "meaning": "星期一", "type": "noun" },
+            { "word": "Tuesday", "meaning": "星期二", "type": "noun" },
+            { "word": "Wednesday", "meaning": "星期三", "type": "noun" },
+            { "word": "Thursday", "meaning": "星期四", "type": "noun" },
+            { "word": "Friday", "meaning": "星期五", "type": "noun" },
+            { "word": "Saturday", "meaning": "星期六", "type": "noun" },
+            { "word": "Sunday", "meaning": "星期日", "type": "noun" },
+            { "word": "today", "meaning": "今天", "type": "noun" },
+            { "word": "let me see", "meaning": "让我想想", "type": "phrase" }
+          ]
+        },
+        {
+          "unit": 3,
+          "title": "My day",
+          "words": [
+            { "word": "day", "meaning": "一天；一日", "type": "noun" },
+            { "word": "get up", "meaning": "起床", "type": "phrase" },
+            { "word": "go to school", "meaning": "上学", "type": "phrase" },
+            { "word": "have lessons", "meaning": "上课", "type": "phrase" },
+            { "word": "play football", "meaning": "踢足球", "type": "phrase" },
+            { "word": "go home", "meaning": "回家", "type": "phrase" },
+            { "word": "do my homework", "meaning": "做作业", "type": "phrase" },
+            { "word": "go to bed", "meaning": "上床睡觉", "type": "phrase" },
+            { "word": "morning", "meaning": "早晨；上午", "type": "noun" },
+            { "word": "afternoon", "meaning": "下午", "type": "noun" },
+            { "word": "evening", "meaning": "晚上", "type": "noun" },
+            { "word": "night", "meaning": "夜晚", "type": "noun" }
+          ]
+        },
+        {
+          "unit": 4,
+          "title": "Drawing in the park",
+          "words": [
+            { "word": "park", "meaning": "公园", "type": "noun" },
+            { "word": "draw", "meaning": "画画", "type": "verb" },
+            { "word": "flower", "meaning": "花", "type": "noun" },
+            { "word": "boat", "meaning": "船", "type": "noun" },
+            { "word": "river", "meaning": "河", "type": "noun" },
+            { "word": "hill", "meaning": "山", "type": "noun" },
+            { "word": "where", "meaning": "在哪里", "type": "adverb" },
+            { "word": "behind", "meaning": "在……后面", "type": "preposition" },
+            { "word": "front", "meaning": "前面", "type": "noun" },
+            { "word": "in front of", "meaning": "在……前面", "type": "phrase" },
+            { "word": "beside", "meaning": "在……旁边", "type": "preposition" },
+            { "word": "between", "meaning": "在……之间", "type": "preposition" }
+          ]
+        },
+        {
+          "unit": 5,
+          "title": "Seasons",
+          "words": [
+            { "word": "season", "meaning": "季节", "type": "noun" },
+            { "word": "spring", "meaning": "春天", "type": "noun" },
+            { "word": "summer", "meaning": "夏天", "type": "noun" },
+            { "word": "autumn", "meaning": "秋天", "type": "noun" },
+            { "word": "winter", "meaning": "冬天", "type": "noun" },
+            { "word": "warm", "meaning": "暖和的", "type": "adjective" },
+            { "word": "hot", "meaning": "热的", "type": "adjective" },
+            { "word": "cool", "meaning": "凉爽的", "type": "adjective" },
+            { "word": "cold", "meaning": "冷的", "type": "adjective" },
+            { "word": "sunny", "meaning": "晴朗的", "type": "adjective" },
+            { "word": "windy", "meaning": "有风的", "type": "adjective" },
+            { "word": "snowy", "meaning": "下雪的", "type": "adjective" }
+          ]
+        },
+        {
+          "unit": 6,
+          "title": "Whose dress is this?",
+          "words": [
+            { "word": "whose", "meaning": "谁的", "type": "pronoun" },
+            { "word": "dress", "meaning": "连衣裙", "type": "noun" },
+            { "word": "mine", "meaning": "我的（东西）", "type": "pronoun" },
+            { "word": "yours", "meaning": "你的（东西）", "type": "pronoun" },
+            { "word": "hers", "meaning": "她的（东西）", "type": "pronoun" },
+            { "word": "his", "meaning": "他的；他的（东西）", "type": "pronoun" },
+            { "word": "shirt", "meaning": "衬衫", "type": "noun" },
+            { "word": "coat", "meaning": "外套", "type": "noun" },
+            { "word": "sweater", "meaning": "毛衣", "type": "noun" },
+            { "word": "shorts", "meaning": "短裤", "type": "noun" },
+            { "word": "trousers", "meaning": "裤子", "type": "noun" }
+          ]
+        },
+        {
+          "unit": 7,
+          "title": "What's the matter?",
+          "words": [
+            { "word": "matter", "meaning": "事情；问题", "type": "noun" },
+            { "word": "hungry", "meaning": "饥饿的", "type": "adjective" },
+            { "word": "thirsty", "meaning": "渴的", "type": "adjective" },
+            { "word": "tired", "meaning": "疲倦的", "type": "adjective" },
+            { "word": "ill", "meaning": "生病的", "type": "adjective" },
+            { "word": "happy", "meaning": "高兴的", "type": "adjective" },
+            { "word": "sad", "meaning": "难过的", "type": "adjective" },
+            { "word": "cake", "meaning": "蛋糕", "type": "noun" },
+            { "word": "have a rest", "meaning": "休息一下", "type": "phrase" },
+            { "word": "have some water", "meaning": "喝些水", "type": "phrase" }
+          ]
+        },
+        {
+          "unit": 8,
+          "title": "How are you?",
+          "words": [
+            { "word": "how are you", "meaning": "你好吗", "type": "phrase" },
+            { "word": "fine", "meaning": "身体好；不错", "type": "adjective" },
+            { "word": "thanks", "meaning": "谢谢", "type": "noun" },
+            { "word": "for", "meaning": "为；给", "type": "preposition" },
+            { "word": "card", "meaning": "卡片", "type": "noun" },
+            { "word": "speak", "meaning": "讲；说", "type": "verb" },
+            { "word": "soon", "meaning": "不久；马上", "type": "adverb" },
+            { "word": "feel", "meaning": "感觉", "type": "verb" },
+            { "word": "better", "meaning": "（病情）好转的", "type": "adjective" },
+            { "word": "see you", "meaning": "再见", "type": "phrase" }
+          ]
+        }
+      ]
+    }
+  ]
+}
