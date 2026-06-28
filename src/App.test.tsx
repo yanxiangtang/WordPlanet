@@ -6,8 +6,17 @@ import { buildPendingAgnesLessonPack, buildSampleLessonPack } from "./lib/lesson
 import { REWARD_VIDEO_PROMPT_VERSION } from "./lib/agnes";
 import { createEmptyMastery, recordMasteryResult } from "./lib/mastery";
 import { defaultParentControlSettings, defaultProfile, defaultSettings, defaultVocabularySelection, storage } from "./lib/storage";
+import { speak } from "./lib/speech";
 import App, { canStartRewardPipeline, LessonBoard, Notice, ParentControlScreen, RewardInline, SummaryScreen } from "./App";
 import type { LessonPack, UnitCoverAsset, VideoTaskState, VocabularySet } from "./types";
+
+vi.mock("./lib/speech", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./lib/speech")>();
+  return {
+    ...actual,
+    speak: vi.fn()
+  };
+});
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -641,6 +650,7 @@ describe("reward clear game", () => {
     container?.remove();
     root = undefined;
     container = undefined;
+    vi.mocked(speak).mockClear();
   });
 
   it("renders the clear game before the video bonus", () => {
@@ -734,6 +744,29 @@ describe("reward clear game", () => {
 
     expect(mount.querySelector(".rescue-meter-copy")?.textContent).toContain("2/");
     expect(mount.querySelector(".reward-clear-tile.selected")).toBeNull();
+  });
+
+  it("plays the word pronunciation when a card is clicked", () => {
+    const mount = document.createElement("div");
+    container = mount;
+    document.body.append(mount);
+    root = createRoot(mount);
+    const words = selectMissionWords("yilin-grade3", "3A", 5);
+    const pack = buildSampleLessonPack(words, { setId: "test", title: "Test mission" });
+    const video: VideoTaskState = { status: "idle", progress: 0 };
+
+    act(() => {
+      root?.render(<RewardInline complete={true} pack={pack} video={video} onCreate={() => {}} onSummary={() => {}} />);
+    });
+
+    const card = mount.querySelector<HTMLButtonElement>(".reward-clear-tile.word");
+    expect(card).toBeTruthy();
+
+    act(() => {
+      card?.click();
+    });
+
+    expect(speak).toHaveBeenCalledWith(card?.textContent, 1);
   });
 });
 

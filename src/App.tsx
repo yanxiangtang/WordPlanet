@@ -2471,6 +2471,7 @@ export function RewardInline({
     if (gameComplete) return;
     const tile = board[row]?.[col];
     if (!tile) return;
+    speak(tile.label, 1);
 
     if (!selectedCell) {
       setSelectedCell({ row, col });
