@@ -18,6 +18,13 @@ export type RewardCell = {
   col: number;
 };
 
+export type RewardWordItem = {
+  id: string;
+  wordId: string;
+  token: string;
+  word: string;
+};
+
 export type RewardBoardOptions = {
   words: WordEntry[];
   pack?: LessonPack;
@@ -28,6 +35,27 @@ export type RewardBoardOptions = {
 
 const DEFAULT_ROWS = 6;
 const DEFAULT_COLUMNS = 6;
+const FALLBACK_REWARD_WORDS: WordEntry[] = [
+  fallbackWord("fallback-hello", "hello"),
+  fallbackWord("fallback-good", "good"),
+  fallbackWord("fallback-star", "star")
+];
+
+function fallbackWord(id: string, value: string): WordEntry {
+  return {
+    id,
+    word: value,
+    meaningZh: value,
+    wordType: "noun",
+    topic: "reward",
+    level: "A1 Movers",
+    example: "",
+    exampleZh: "",
+    imagePromptHint: "",
+    spellingDifficulty: "easy",
+    pronunciationNote: ""
+  };
+}
 
 function hashString(seed: string): number {
   let hash = 2166136261;
@@ -45,6 +73,17 @@ function nextRandom(state: number): number {
   return value >>> 0;
 }
 
+function shuffleRewardItems<T extends { id: string }>(items: T[], seed: string): T[] {
+  let state = hashString(seed) || 1;
+  const shuffled = [...items];
+  for (let index = shuffled.length - 1; index > 0; index -= 1) {
+    state = nextRandom(state + index * 97);
+    const swapIndex = state % (index + 1);
+    [shuffled[index], shuffled[swapIndex]] = [shuffled[swapIndex], shuffled[index]];
+  }
+  return shuffled;
+}
+
 function makeTileForWord(
   word: WordEntry,
   index: number
@@ -56,6 +95,37 @@ function makeTileForWord(
     label: word.word,
     wordId: word.id
   };
+}
+
+export function buildRewardWordPool(words: WordEntry[], count: number): RewardWordItem[] {
+  const source = words.length > 0 ? words : FALLBACK_REWARD_WORDS;
+  return Array.from({ length: Math.max(0, count) }, (_, index) => {
+    const word = source[index % source.length];
+    return {
+      id: `reward-item-${word.id}-${index}`,
+      wordId: word.id,
+      token: `word:${word.id}`,
+      word: word.word
+    };
+  });
+}
+
+export function buildRewardChoices(
+  words: WordEntry[],
+  target: WordEntry,
+  count: number,
+  seed: string
+): RewardWordItem[] {
+  if (count <= 0) return [];
+  const otherWords = words.filter((word) => word.id !== target.id);
+  const pool = buildRewardWordPool(otherWords, count - 1);
+  const targetItem: RewardWordItem = {
+    id: `reward-choice-${target.id}-${seed}`,
+    wordId: target.id,
+    token: `word:${target.id}`,
+    word: target.word
+  };
+  return shuffleRewardItems([targetItem, ...pool], seed).slice(0, count);
 }
 
 export function buildRewardBoard({

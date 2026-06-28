@@ -61,11 +61,14 @@ import {
 } from "./lib/mastery";
 import {
   buildRewardBoard,
+  buildRewardChoices,
+  buildRewardWordPool,
   clearRewardPair,
   hasRewardMove,
   type RewardCell,
   type RewardBoard,
-  type RewardTile
+  type RewardTile,
+  type RewardWordItem
 } from "./lib/rewardClearGame";
 import { listenForWord, speak, speechRecognitionSupported } from "./lib/speech";
 import { buildShuffledLetterTiles } from "./lib/spelling";
@@ -2410,24 +2413,204 @@ function SpellingInline({
 
 const REWARD_BOARD_SIZE = 6;
 const REWARD_MILESTONES = [6, 12, 24, 36];
+export type RewardGameKind = "twin" | "monster" | "balloon";
+const REWARD_GAME_KINDS: RewardGameKind[] = ["twin", "monster", "balloon"];
+
+function hashRewardGameKey(value: string): number {
+  let hash = 0;
+  for (let index = 0; index < value.length; index += 1) {
+    hash = Math.imul(hash, 31) + value.charCodeAt(index);
+    hash |= 0;
+  }
+  return hash;
+}
+
+function pickRewardGame(packId: string): RewardGameKind {
+  const index = Math.abs(hashRewardGameKey(packId)) % REWARD_GAME_KINDS.length;
+  return REWARD_GAME_KINDS[index];
+}
+
+function rewardItemToWordEntry(item: RewardWordItem): WordEntry {
+  return {
+    id: item.wordId,
+    word: item.word,
+    meaningZh: item.word,
+    wordType: "noun",
+    topic: "reward",
+    level: "A1 Movers",
+    example: "",
+    exampleZh: "",
+    imagePromptHint: "",
+    spellingDifficulty: "easy",
+    pronunciationNote: ""
+  };
+}
+
+function wordEntryForRewardItem(pack: LessonPack, item: RewardWordItem): WordEntry {
+  return pack.words.find((word) => word.id === item.wordId) ?? rewardItemToWordEntry(item);
+}
+
+function HungryMonsterGame({ pack, onComplete }: { pack: LessonPack; onComplete: () => void }) {
+  const targetTotal = 10;
+  const targets = useMemo(() => buildRewardWordPool(pack.words, targetTotal), [pack.id, pack.words]);
+  const [progress, setProgress] = useState(0);
+  const [feedbackId, setFeedbackId] = useState<string | null>(null);
+  const currentTarget = targets[Math.min(progress, targets.length - 1)];
+  const targetWord = currentTarget ? wordEntryForRewardItem(pack, currentTarget) : null;
+  const choices = useMemo(
+    () => (targetWord ? buildRewardChoices(pack.words, targetWord, 4, `${pack.id}-monster-${progress}`) : []),
+    [pack, pack.id, progress, targetWord]
+  );
+  const rescuePercent = Math.min(100, Math.round((progress / targetTotal) * 100));
+
+  useEffect(() => {
+    setProgress(0);
+    setFeedbackId(null);
+  }, [pack.id]);
+
+  function chooseWord(choice: RewardWordItem) {
+    if (!targetWord || progress >= targetTotal) return;
+    speak(choice.word, 1);
+    setFeedbackId(choice.id);
+    if (choice.wordId !== targetWord.id) return;
+
+    const nextProgress = progress + 1;
+    setProgress(nextProgress);
+    if (nextProgress >= targetTotal) onComplete();
+  }
+
+  return (
+    <div className="reward-board-shell reward-mini-game">
+      <div className="reward-monster-stage">
+        <div className="reward-monster-face" aria-hidden="true">
+          <span className="monster-eye" />
+          <span className="monster-eye" />
+          <span className="monster-mouth" />
+        </div>
+        <div className="reward-target-card" data-current-target={targetWord?.word ?? ""}>
+          <span>Feed me</span>
+          <strong>{targetWord?.word ?? "hello"}</strong>
+        </div>
+      </div>
+      <div className="rescue-meter" aria-label="Snack meter">
+        <span style={{ width: `${rescuePercent}%` }} />
+      </div>
+      <div className="rescue-meter-copy">{progress}/{targetTotal} snacks delivered</div>
+      <div className="reward-choice-grid" aria-label="Monster word choices">
+        {choices.map((choice) => {
+          const feedbackClass =
+            feedbackId === choice.id ? (choice.wordId === targetWord?.id ? "correct" : "wrong") : "";
+          return (
+            <button
+              className={`reward-choice-card ${feedbackClass}`}
+              key={choice.id}
+              type="button"
+              onClick={() => chooseWord(choice)}
+              data-word={choice.word}
+              disabled={progress >= targetTotal}
+            >
+              <span className="reward-card-sound" aria-hidden="true"><Volume2 size={12} /></span>
+              <span className="reward-card-word">{choice.word}</span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function BalloonPopGame({ pack, onComplete }: { pack: LessonPack; onComplete: () => void }) {
+  const targetTotal = 10;
+  const targets = useMemo(() => buildRewardWordPool(pack.words, targetTotal), [pack.id, pack.words]);
+  const [progress, setProgress] = useState(0);
+  const [feedbackId, setFeedbackId] = useState<string | null>(null);
+  const currentTarget = targets[Math.min(progress, targets.length - 1)];
+  const targetWord = currentTarget ? wordEntryForRewardItem(pack, currentTarget) : null;
+  const balloons = useMemo(
+    () => (targetWord ? buildRewardChoices(pack.words, targetWord, 5, `${pack.id}-balloon-${progress}`) : []),
+    [pack, pack.id, progress, targetWord]
+  );
+  const rescuePercent = Math.min(100, Math.round((progress / targetTotal) * 100));
+
+  useEffect(() => {
+    setProgress(0);
+    setFeedbackId(null);
+  }, [pack.id]);
+
+  function popBalloon(choice: RewardWordItem) {
+    if (!targetWord || progress >= targetTotal) return;
+    speak(choice.word, 1);
+    setFeedbackId(choice.id);
+    if (choice.wordId !== targetWord.id) return;
+
+    const nextProgress = progress + 1;
+    setProgress(nextProgress);
+    if (nextProgress >= targetTotal) onComplete();
+  }
+
+  return (
+    <div className="reward-board-shell reward-mini-game">
+      <div className="reward-balloon-stage">
+        <div className="reward-target-card reward-balloon-target" data-current-target={targetWord?.word ?? ""}>
+          <span>Pop</span>
+          <strong>{targetWord?.word ?? "hello"}</strong>
+        </div>
+        <div className="reward-balloon-cloud" aria-label="Balloon word choices">
+          {balloons.map((choice, index) => {
+            const feedbackClass =
+              feedbackId === choice.id ? (choice.wordId === targetWord?.id ? "pop" : "wrong") : "";
+            return (
+              <button
+                className={`reward-balloon ${feedbackClass}`}
+                key={choice.id}
+                type="button"
+                onClick={() => popBalloon(choice)}
+                data-word={choice.word}
+                disabled={progress >= targetTotal}
+                style={{ ["--balloon-delay" as string]: `${index * 70}ms` }}
+              >
+                <span className="reward-card-sound" aria-hidden="true"><Volume2 size={12} /></span>
+                <span className="reward-card-word">{choice.word}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+      <div className="rescue-meter" aria-label="Balloon meter">
+        <span style={{ width: `${rescuePercent}%` }} />
+      </div>
+      <div className="rescue-meter-copy">{progress}/{targetTotal} balloons popped</div>
+    </div>
+  );
+}
 
 export function RewardInline({
   complete,
   pack,
   video,
   onCreate,
-  onSummary
+  onSummary,
+  rewardGame
 }: {
   complete: boolean;
   pack: LessonPack;
   video: VideoTaskState;
   onCreate: () => void;
   onSummary: () => void;
+  rewardGame?: RewardGameKind;
 }) {
   const stageCopy = rewardStageCopy(video, complete);
   const videoReady = isRewardVideoReady(video);
   const showVideoPlayer = videoReady && Boolean(video.url);
   const inFlight = isRewardVideoInFlight(video);
+  const activeGame = rewardGame ?? pickRewardGame(pack.id);
+  const gameTitle = activeGame === "monster" ? "Hungry Monster" : activeGame === "balloon" ? "Balloon Pop" : "Word Card Rescue";
+  const gameBubble =
+    activeGame === "monster"
+      ? "Feed the hungry helper."
+      : activeGame === "balloon"
+        ? "Pop the matching word."
+        : "Pick a word, then find its twin.";
   const rescueTarget = REWARD_BOARD_SIZE * REWARD_BOARD_SIZE;
   const [rescueProgress, setRescueProgress] = useState(0);
   const [gameComplete, setGameComplete] = useState(false);
@@ -2462,7 +2645,7 @@ export function RewardInline({
     setGameComplete(false);
     setSelectedCell(null);
     setPairFlash(null);
-  }, [pack.id]);
+  }, [pack.id, activeGame]);
 
   function clearTile(row: number, col: number) {
     if (gameComplete) return;
@@ -2505,9 +2688,9 @@ export function RewardInline({
           <div className="reward-clear-header">
             <div>
               <p className="reward-kicker">Reward Game</p>
-              <h3>Word Card Rescue</h3>
+              <h3>{gameTitle}</h3>
             </div>
-            <div className="reward-rescue-bubble">Pick a word, then find its twin.</div>
+            <div className="reward-rescue-bubble">{gameBubble}</div>
           </div>
           <div className="reward-rescue-trail" aria-label="Rescue milestones">
             {REWARD_MILESTONES.map((milestone) => (
@@ -2520,7 +2703,12 @@ export function RewardInline({
         </div>
 
         <div className="reward-rescue-layout">
-          <div className="reward-board-shell">
+          {activeGame === "monster" ? (
+            <HungryMonsterGame pack={pack} onComplete={() => setGameComplete(true)} />
+          ) : activeGame === "balloon" ? (
+            <BalloonPopGame pack={pack} onComplete={() => setGameComplete(true)} />
+          ) : (
+            <div className="reward-board-shell">
             <p className={`reward-guidance ${pairFlash ?? ""}`}>
               {gameComplete
                 ? "Planet rescued! Your video bonus is unlocked."
@@ -2575,6 +2763,7 @@ export function RewardInline({
               )}
             </div>
           </div>
+          )}
         </div>
       </section>
 

@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import type { WordEntry } from "../types";
 import {
   buildRewardBoard,
+  buildRewardChoices,
+  buildRewardWordPool,
   clearRewardPair,
   hasRewardMove,
   type RewardBoard,
@@ -125,5 +127,26 @@ describe("reward clear game board helpers", () => {
     expect(gameBoard.every((row) => row.length === 6)).toBe(true);
     expect(hasRewardMove(gameBoard)).toBe(true);
     expect(Array.from(tokenCounts.values()).every((count) => count % 2 === 0)).toBe(true);
+  });
+
+  it("builds a repeated reward word pool from short word lists", () => {
+    const pool = buildRewardWordPool(words.slice(0, 2), 5);
+
+    expect(pool).toHaveLength(5);
+    expect(pool.map((item) => item.word)).toEqual([
+      words[0].word,
+      words[1].word,
+      words[0].word,
+      words[1].word,
+      words[0].word
+    ]);
+  });
+
+  it("builds target choices with the target included", () => {
+    const choices = buildRewardChoices(words, words[1], 4, "monster");
+
+    expect(choices).toHaveLength(4);
+    expect(choices.some((choice) => choice.wordId === words[1].id)).toBe(true);
+    expect(new Set(choices.map((choice) => choice.id)).size).toBe(4);
   });
 });

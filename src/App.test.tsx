@@ -282,7 +282,8 @@ describe("mission dock navigation", () => {
 
     const rewardPanel = mount.querySelector<HTMLElement>(".inline-activity.reward");
     expect(rewardPanel?.textContent).not.toContain("Finish the missing practice below to unlock the video");
-    expect(rewardPanel?.textContent).toContain("Tap a word, then find its twin.");
+    expect(rewardPanel?.querySelector(".reward-clear-game")).not.toBeNull();
+    expect(rewardPanel?.textContent).toMatch(/Word Card Rescue|Hungry Monster|Balloon Pop/);
 
     const gameStep = Array.from(mount.querySelectorAll<HTMLButtonElement>(".mission-stepper-item")).find((button) =>
       button.textContent?.includes("Game")
@@ -642,6 +643,35 @@ describe("interactive spelling practice", () => {
 describe("reward clear game", () => {
   let root: Root | undefined;
   let container: HTMLDivElement | undefined;
+  let mount: HTMLDivElement;
+
+  function renderReward(rewardGame: "twin" | "monster" | "balloon" = "twin", wordCount = 5, videoOverrides: Partial<VideoTaskState> = {}) {
+    mount = document.createElement("div");
+    container = mount;
+    document.body.append(mount);
+    root = createRoot(mount);
+    const words = selectMissionWords("yilin-grade3", "3A", wordCount);
+    const pack = buildSampleLessonPack(words, { setId: `${rewardGame}-game`, title: "Test mission" });
+    const video: VideoTaskState = { status: "completed", progress: 100, url: "blob:reward", promptVersion: REWARD_VIDEO_PROMPT_VERSION, ...videoOverrides };
+
+    act(() => {
+      root?.render(<RewardInline complete={true} pack={pack} video={video} onCreate={() => {}} onSummary={() => {}} rewardGame={rewardGame} />);
+    });
+
+    return { mount, pack, video };
+  }
+
+  function completeTargetGame(result: { mount: HTMLDivElement }, selector: string) {
+    for (let index = 0; index < 10; index += 1) {
+      const target = result.mount.querySelector<HTMLElement>("[data-current-target]")?.dataset.currentTarget ?? "";
+      const right = Array.from(result.mount.querySelectorAll<HTMLButtonElement>(selector)).find((button) => button.dataset.word === target);
+      expect(target).not.toBe("");
+      expect(right).toBeTruthy();
+      act(() => {
+        right?.click();
+      });
+    }
+  }
 
   afterEach(() => {
     if (root) {
@@ -663,7 +693,7 @@ describe("reward clear game", () => {
     const video: VideoTaskState = { status: "completed", progress: 100, url: "blob:reward", promptVersion: REWARD_VIDEO_PROMPT_VERSION };
 
     act(() => {
-      root?.render(<RewardInline complete={false} pack={pack} video={video} onCreate={() => {}} onSummary={() => {}} />);
+      root?.render(<RewardInline complete={false} pack={pack} video={video} onCreate={() => {}} onSummary={() => {}} rewardGame="twin" />);
     });
 
     expect(mount.querySelector(".reward-clear-game")).not.toBeNull();
@@ -672,6 +702,60 @@ describe("reward clear game", () => {
     expect(mount.textContent).not.toContain("Today's Mission");
     expect(mount.textContent).not.toContain("Video Bonus");
     expect(mount.querySelector("video")).toBeNull();
+  });
+
+  it("renders a selected reward mini-game before the video bonus", () => {
+    const result = renderReward("monster");
+
+    expect(result.mount.querySelector(".reward-clear-game")).not.toBeNull();
+    expect(result.mount.textContent).toContain("Hungry Monster");
+    expect(result.mount.textContent).not.toContain("Video Bonus");
+  });
+
+  it("feeds the Hungry Monster only when the target word is tapped", () => {
+    const result = renderReward("monster");
+    const progress = () => result.mount.querySelector(".rescue-meter-copy")?.textContent ?? "";
+    const target = result.mount.querySelector<HTMLElement>("[data-current-target]")?.dataset.currentTarget ?? "";
+    const wrong = Array.from(result.mount.querySelectorAll<HTMLButtonElement>(".reward-choice-card")).find((button) => button.dataset.word !== target);
+    const right = Array.from(result.mount.querySelectorAll<HTMLButtonElement>(".reward-choice-card")).find((button) => button.dataset.word === target);
+
+    expect(target).not.toBe("");
+    expect(wrong).toBeTruthy();
+    expect(right).toBeTruthy();
+
+    act(() => {
+      wrong?.click();
+    });
+    expect(progress()).toContain("0/");
+
+    act(() => {
+      right?.click();
+    });
+    expect(progress()).toContain("1/");
+    expect(speak).toHaveBeenCalledWith(target, 1);
+  });
+
+  it("pops only the matching Balloon Pop word", () => {
+    const result = renderReward("balloon");
+    const progress = () => result.mount.querySelector(".rescue-meter-copy")?.textContent ?? "";
+    const target = result.mount.querySelector<HTMLElement>("[data-current-target]")?.dataset.currentTarget ?? "";
+    const wrong = Array.from(result.mount.querySelectorAll<HTMLButtonElement>(".reward-balloon")).find((button) => button.dataset.word !== target);
+    const right = Array.from(result.mount.querySelectorAll<HTMLButtonElement>(".reward-balloon")).find((button) => button.dataset.word === target);
+
+    expect(target).not.toBe("");
+    expect(wrong).toBeTruthy();
+    expect(right).toBeTruthy();
+
+    act(() => {
+      wrong?.click();
+    });
+    expect(progress()).toContain("0/");
+
+    act(() => {
+      right?.click();
+    });
+    expect(progress()).toContain("1/");
+    expect(speak).toHaveBeenCalledWith(target, 1);
   });
 
   it("reveals the video bonus after the rescue meter is filled", () => {
@@ -684,7 +768,7 @@ describe("reward clear game", () => {
     const video: VideoTaskState = { status: "completed", progress: 100, url: "blob:reward", promptVersion: REWARD_VIDEO_PROMPT_VERSION };
 
     act(() => {
-      root?.render(<RewardInline complete={true} pack={pack} video={video} onCreate={() => {}} onSummary={() => {}} />);
+      root?.render(<RewardInline complete={true} pack={pack} video={video} onCreate={() => {}} onSummary={() => {}} rewardGame="twin" />);
     });
 
     for (let index = 0; index < 18; index += 1) {
@@ -707,6 +791,24 @@ describe("reward clear game", () => {
     expect(mount.querySelector("video")).not.toBeNull();
   });
 
+  it("reveals the video bonus after Hungry Monster is complete", () => {
+    const result = renderReward("monster");
+
+    completeTargetGame(result, ".reward-choice-card");
+
+    expect(result.mount.textContent).toContain("Video Bonus");
+    expect(result.mount.querySelector("video")).not.toBeNull();
+  });
+
+  it("reveals the video bonus after Balloon Pop is complete", () => {
+    const result = renderReward("balloon");
+
+    completeTargetGame(result, ".reward-balloon");
+
+    expect(result.mount.textContent).toContain("Video Bonus");
+    expect(result.mount.querySelector("video")).not.toBeNull();
+  });
+
   it("selects one card and clears any matching word card on the second click", () => {
     const mount = document.createElement("div");
     container = mount;
@@ -717,7 +819,7 @@ describe("reward clear game", () => {
     const video: VideoTaskState = { status: "idle", progress: 0 };
 
     act(() => {
-      root?.render(<RewardInline complete={true} pack={pack} video={video} onCreate={() => {}} onSummary={() => {}} />);
+      root?.render(<RewardInline complete={true} pack={pack} video={video} onCreate={() => {}} onSummary={() => {}} rewardGame="twin" />);
     });
 
     const byToken = new Map<string, HTMLButtonElement[]>();
@@ -756,7 +858,7 @@ describe("reward clear game", () => {
     const video: VideoTaskState = { status: "idle", progress: 0 };
 
     act(() => {
-      root?.render(<RewardInline complete={true} pack={pack} video={video} onCreate={() => {}} onSummary={() => {}} />);
+      root?.render(<RewardInline complete={true} pack={pack} video={video} onCreate={() => {}} onSummary={() => {}} rewardGame="twin" />);
     });
 
     const card = mount.querySelector<HTMLButtonElement>(".reward-clear-tile.word");
