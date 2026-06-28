@@ -72,6 +72,14 @@ import {
   type RewardWordItem
 } from "./lib/rewardClearGame";
 import { buildProgressStats, loadDailyProgress, recordDailyVisit, saveDailyProgress, type DailyProgress, type ProgressStats } from "./lib/progress";
+import {
+  addRewardGameTrophy,
+  loadLastPickedRewardGame,
+  loadRewardGameTrophies,
+  saveLastPickedRewardGame,
+  saveRewardGameTrophies,
+  type RewardGameKind
+} from "./lib/rewardGameTrophies";
 import { listenForWord, speak, speechRecognitionSupported } from "./lib/speech";
 import { buildShuffledLetterTiles } from "./lib/spelling";
 import { DEFAULT_STYLE_ID, getStyle, resolveStyleDescriptor, VISUAL_STYLES, type VisualStyle } from "./lib/styles";
@@ -298,6 +306,20 @@ function App() {
   const [dailyProgress, setDailyProgress] = useState<DailyProgress>(() =>
     typeof window === "undefined" ? { count: 0, lastVisitDate: "" } : loadDailyProgress()
   );
+  // Persisted "earned" badges on reward mini-games. Trophies survive refresh
+  // so a kid sees the games they've finished decorated on every later visit.
+  const [earnedRewardGames, setEarnedRewardGames] = useState<RewardGameKind[]>(() =>
+    typeof window === "undefined" ? [] : loadRewardGameTrophies()
+  );
+
+  const markRewardGameEarned = useCallback((kind: RewardGameKind) => {
+    setEarnedRewardGames((current) => {
+      const next = addRewardGameTrophy(current, kind);
+      if (next === current) return current; // already earned — no save needed
+      saveRewardGameTrophies(next);
+      return next;
+    });
+  }, []);
 
   // Object URLs for cached image/video Blobs are minted here so we can revoke
   // them in one place. Every code path that swaps `pack` or replaces the video
@@ -1652,6 +1674,8 @@ function App() {
             onGameContinue={continueGameToSpell}
             onSpellContinue={advanceSpellWord}
             onRewardSummary={() => transitionWithCheer("Mission complete! 🎉", "summary")}
+            earnedRewardGames={earnedRewardGames}
+            onRewardGameEarned={markRewardGameEarned}
           />
         )}
       </main>
@@ -1737,7 +1761,9 @@ function MissionDashboard({
   hasUnitStylePick,
   hasApiKey,
   onPickUnitStyle,
-  onUnitVisible
+  onUnitVisible,
+  earnedRewardGames,
+  onRewardGameEarned
 }: {
   pack: LessonPack;
   units: VocabularyUnit[];
@@ -1792,6 +1818,8 @@ function MissionDashboard({
   hasApiKey: boolean;
   onPickUnitStyle: () => void;
   onUnitVisible: (unit: VocabularyUnit) => void;
+  earnedRewardGames: ReadonlyArray<RewardGameKind>;
+  onRewardGameEarned: (kind: RewardGameKind) => void;
 }) {
   const showLessonBoard = screen === "home";
   const showNoticeRow = Boolean(notice);
@@ -1885,6 +1913,8 @@ function MissionDashboard({
                   video={video}
                   onCreate={onCreateVideo}
                   onSummary={onRewardSummary}
+                  earnedRewardGames={earnedRewardGames}
+                  onGameEarned={onRewardGameEarned}
                 />
               )}
               {screen === "summary" && <SummaryScreen mastery={mastery} onContinue={onHome} onPracticeAgain={onSpell} />}
@@ -2562,21 +2592,42 @@ function SpellingInline({
 
 const REWARD_BOARD_SIZE = 6;
 const REWARD_MILESTONES = [6, 12, 24, 36];
-export type RewardGameKind = "twin" | "monster" | "balloon";
-const REWARD_GAME_KINDS: RewardGameKind[] = ["twin", "monster", "balloon"];
+export type { RewardGameKind } from "./lib/rewardGameTrophies";
 
-function hashRewardGameKey(value: string): number {
-  let hash = 0;
-  for (let index = 0; index < value.length; index += 1) {
-    hash = Math.imul(hash, 31) + value.charCodeAt(index);
-    hash |= 0;
+// Single source of truth for kid-facing copy on the chooser and the in-game
+// header. Order here is the order the chooser cards render.
+export const REWARD_GAMES: ReadonlyArray<{
+  id: RewardGameKind;
+  title: string;
+  bubble: string;
+  chooserBlurb: string;
+  emoji: string;
+}> = [
+  {
+    id: "twin",
+    title: "Word Card Rescue",
+    bubble: "Pick a word, then find its twin.",
+    chooserBlurb: "Match pairs across a 6 × 6 board.",
+    emoji: "🃏"
+  },
+  {
+    id: "monster",
+    title: "Hungry Monster",
+    bubble: "Feed the hungry helper.",
+    chooserBlurb: "Listen, then feed the right snack.",
+    emoji: "👾"
+  },
+  {
+    id: "balloon",
+    title: "Balloon Pop",
+    bubble: "Pop the matching word.",
+    chooserBlurb: "Pop the balloon that matches.",
+    emoji: "🎈"
   }
-  return hash;
-}
+];
 
-function pickRewardGame(packId: string): RewardGameKind {
-  const index = Math.abs(hashRewardGameKey(packId)) % REWARD_GAME_KINDS.length;
-  return REWARD_GAME_KINDS[index];
+function rewardGameMeta(kind: RewardGameKind) {
+  return REWARD_GAMES.find((game) => game.id === kind) ?? REWARD_GAMES[0];
 }
 
 function rewardItemToWordEntry(item: RewardWordItem): WordEntry {
@@ -2612,17 +2663,43 @@ function HungryMonsterGame({ pack, onComplete }: { pack: LessonPack; onComplete:
   );
   const rescuePercent = Math.min(100, Math.round((progress / targetTotal) * 100));
 
+  const firstSpeakRef = useRef(false);
   useEffect(() => {
     setProgress(0);
     setFeedbackId(null);
+    firstSpeakRef.current = false;
   }, [pack.id]);
+
+  // Speak the very first target word once when the kid enters the game so
+  // they immediately hear what to listen for. Later rounds don't auto-speak —
+  // the chooseWord handler already pronounces the new target after a correct
+  // tap, and the Listen button is always available. Auto-speaking on every
+  // round-change also raced with the user-triggered speak() and could leave
+  // Chrome's speechSynthesis engine in a stuck state.
+  useEffect(() => {
+    if (firstSpeakRef.current || !targetWord) return;
+    firstSpeakRef.current = true;
+    speak(targetWord.word, 0.9);
+  }, [targetWord?.id]);
+
+  function replayTarget() {
+    if (targetWord) speak(targetWord.word, 0.9);
+  }
 
   function chooseWord(choice: RewardWordItem) {
     if (!targetWord || progress >= targetTotal) return;
-    speak(choice.word, 1);
     setFeedbackId(choice.id);
-    if (choice.wordId !== targetWord.id) return;
+    if (choice.wordId !== targetWord.id) {
+      // Replay the target so the kid can compare what they heard with what
+      // they tapped. No progress penalty — they keep trying.
+      speak(targetWord.word, 0.9);
+      return;
+    }
 
+    // Correct: pronounce the choice, then advance. Speaking the NEW target is
+    // deferred — the kid hears their win, then can tap Listen for the next
+    // round (or chooseWord pronounces a wrong tap, which doubles as the cue).
+    speak(choice.word, 1);
     const nextProgress = progress + 1;
     setProgress(nextProgress);
     if (nextProgress >= targetTotal) onComplete();
@@ -2636,15 +2713,25 @@ function HungryMonsterGame({ pack, onComplete }: { pack: LessonPack; onComplete:
           <span className="monster-eye" />
           <span className="monster-mouth" />
         </div>
-        <div className="reward-target-card" data-current-target={targetWord?.word ?? ""}>
-          <span>Feed me</span>
-          <strong>{targetWord?.word ?? "hello"}</strong>
+        <div className="reward-target-card listen-card" data-current-target={targetWord?.word ?? ""}>
+          <span>Feed me the word</span>
+          <button
+            type="button"
+            className="reward-listen-button"
+            onClick={replayTarget}
+            disabled={!targetWord || progress >= targetTotal}
+            aria-label="Listen to the word again"
+          >
+            <Volume2 size={32} aria-hidden="true" />
+            <span>Listen</span>
+          </button>
         </div>
       </div>
       <div className="rescue-meter" aria-label="Snack meter">
         <span style={{ width: `${rescuePercent}%` }} />
       </div>
       <div className="rescue-meter-copy">{progress}/{targetTotal} snacks delivered</div>
+      <p className="reward-listen-hint">Listen to the word, then tap the matching snack.</p>
       <div className="reward-choice-grid" aria-label="Monster word choices">
         {choices.map((choice) => {
           const feedbackClass =
@@ -2657,8 +2744,8 @@ function HungryMonsterGame({ pack, onComplete }: { pack: LessonPack; onComplete:
               onClick={() => chooseWord(choice)}
               data-word={choice.word}
               disabled={progress >= targetTotal}
+              aria-label={`Feed the word ${choice.word}`}
             >
-              <span className="reward-card-sound" aria-hidden="true"><Volume2 size={12} /></span>
               <span className="reward-card-word">{choice.word}</span>
             </button>
           );
@@ -2733,13 +2820,57 @@ function BalloonPopGame({ pack, onComplete }: { pack: LessonPack; onComplete: ()
   );
 }
 
+function RewardGameChooser({
+  earned,
+  onPick
+}: {
+  earned: ReadonlyArray<RewardGameKind>;
+  onPick: (kind: RewardGameKind) => void;
+}) {
+  return (
+    <section className="reward-game-chooser" aria-label="Choose your reward game">
+      <header className="reward-game-chooser-header">
+        <p className="reward-kicker">Reward Game</p>
+        <h3>Pick your game</h3>
+        <p className="reward-game-chooser-bubble">Tap a card to play. Finish one to earn its trophy.</p>
+      </header>
+      <div className="reward-game-chooser-grid">
+        {REWARD_GAMES.map((game) => {
+          const isEarned = earned.includes(game.id);
+          return (
+            <button
+              key={game.id}
+              type="button"
+              className={`reward-game-chooser-card ${isEarned ? "earned" : ""}`}
+              onClick={() => onPick(game.id)}
+              data-game={game.id}
+              aria-label={`Play ${game.title}`}
+            >
+              <span className="reward-game-chooser-emoji" aria-hidden="true">{game.emoji}</span>
+              <strong>{game.title}</strong>
+              <span className="reward-game-chooser-blurb">{game.chooserBlurb}</span>
+              {isEarned && (
+                <span className="reward-game-chooser-trophy" aria-label="Earned">
+                  <Trophy size={14} /> Earned
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
 export function RewardInline({
   complete,
   pack,
   video,
   onCreate,
   onSummary,
-  rewardGame
+  rewardGame,
+  earnedRewardGames = [],
+  onGameEarned
 }: {
   complete: boolean;
   pack: LessonPack;
@@ -2747,19 +2878,34 @@ export function RewardInline({
   onCreate: () => void;
   onSummary: () => void;
   rewardGame?: RewardGameKind;
+  earnedRewardGames?: ReadonlyArray<RewardGameKind>;
+  onGameEarned?: (kind: RewardGameKind) => void;
 }) {
   const stageCopy = rewardStageCopy(video, complete);
   const videoReady = isRewardVideoReady(video);
   const showVideoPlayer = videoReady && Boolean(video.url);
   const inFlight = isRewardVideoInFlight(video);
-  const activeGame = rewardGame ?? pickRewardGame(pack.id);
-  const gameTitle = activeGame === "monster" ? "Hungry Monster" : activeGame === "balloon" ? "Balloon Pop" : "Word Card Rescue";
-  const gameBubble =
-    activeGame === "monster"
-      ? "Feed the hungry helper."
-      : activeGame === "balloon"
-        ? "Pop the matching word."
-        : "Pick a word, then find its twin.";
+  // The picked game persists across refresh in localStorage so a mid-session
+  // refresh lands back on the same game instead of bouncing to the chooser.
+  // The optional rewardGame prop forces a value (tests use this hatch); it
+  // bypasses persistence so a forced render in tests never pollutes storage.
+  const [selectedGame, setSelectedGameState] = useState<RewardGameKind | null>(() => {
+    if (rewardGame !== undefined) return rewardGame;
+    if (typeof window === "undefined") return null;
+    return loadLastPickedRewardGame();
+  });
+  const activeGame = selectedGame;
+  const gameMeta = activeGame ? rewardGameMeta(activeGame) : null;
+
+  function pickGame(kind: RewardGameKind) {
+    setSelectedGameState(kind);
+    saveLastPickedRewardGame(kind);
+  }
+
+  function returnToChooser() {
+    setSelectedGameState(null);
+    saveLastPickedRewardGame(null);
+  }
   const rescueTarget = REWARD_BOARD_SIZE * REWARD_BOARD_SIZE;
   const [rescueProgress, setRescueProgress] = useState(0);
   const [gameComplete, setGameComplete] = useState(false);
@@ -2798,6 +2944,11 @@ export function RewardInline({
     setRocketStickers([]);
   }, [pack.id, activeGame]);
 
+  function handleGameComplete() {
+    setGameComplete(true);
+    if (activeGame && onGameEarned) onGameEarned(activeGame);
+  }
+
   function clearTile(row: number, col: number) {
     if (gameComplete) return;
     const tile = board[row]?.[col];
@@ -2829,94 +2980,109 @@ export function RewardInline({
     setPairFlash("match");
     setBoard(result.board);
     setRescueProgress(nextProgress);
-    if (nextProgress >= rescueTarget) setGameComplete(true);
+    if (nextProgress >= rescueTarget) handleGameComplete();
   }
 
   return (
     <div className="inline-activity reward">
-      <section className={`reward-clear-game ${gameComplete ? "complete" : ""}`} aria-label="Word Card Rescue">
-        <div className="reward-scene-top">
-          <div className="reward-clear-header">
-            <div>
-              <p className="reward-kicker">Reward Game</p>
-              <h3>{gameTitle}</h3>
-            </div>
-            <div className="reward-rescue-bubble">{gameBubble}</div>
-          </div>
-          <div className="reward-rescue-trail" aria-label="Rescue milestones">
-            {REWARD_MILESTONES.map((milestone) => (
-              <div className={`reward-milestone ${rescueProgress >= milestone ? "done" : ""}`} key={milestone}>
-                <span>{milestone}</span>
-                <small>cards</small>
+      {activeGame === null || gameMeta === null ? (
+        <RewardGameChooser earned={earnedRewardGames} onPick={pickGame} />
+      ) : (
+        <section className={`reward-clear-game ${gameComplete ? "complete" : ""}`} aria-label={gameMeta.title}>
+          <div className="reward-scene-top">
+            <div className="reward-clear-header">
+              <div>
+                <p className="reward-kicker">Reward Game</p>
+                <h3>{gameMeta.title}</h3>
               </div>
-            ))}
+              <div className="reward-rescue-bubble">{gameMeta.bubble}</div>
+            </div>
+            <div className="reward-rescue-header-row">
+              <button
+                type="button"
+                className="reward-change-game"
+                onClick={returnToChooser}
+                aria-label="Pick another reward game"
+              >
+                <LayoutGrid size={16} aria-hidden="true" />
+                Pick another game
+              </button>
+              <div className="reward-rescue-trail" aria-label="Rescue milestones">
+                {REWARD_MILESTONES.map((milestone) => (
+                  <div className={`reward-milestone ${rescueProgress >= milestone ? "done" : ""}`} key={milestone}>
+                    <span>{milestone}</span>
+                    <small>cards</small>
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
-        </div>
 
-        <div className="reward-rescue-layout">
-          {activeGame === "monster" ? (
-            <HungryMonsterGame pack={pack} onComplete={() => setGameComplete(true)} />
-          ) : activeGame === "balloon" ? (
-            <BalloonPopGame pack={pack} onComplete={() => setGameComplete(true)} />
-          ) : (
-            <div className="reward-board-shell">
-            <p className={`reward-guidance ${pairFlash ?? ""}`}>
-              {gameComplete
-                ? "Planet rescued! Your video bonus is unlocked."
-                : pairFlash === "miss"
-                  ? "Not a match. That card is selected now."
-                : selectedCell
-                  ? "Card selected. Find its twin."
-                : pairFlash === "match"
-                    ? "Pair cleared! Pick your next match."
-                  : "Tap a word, then find its twin."}
-            </p>
-            <div className="rescue-meter" aria-label="Rescue meter">
-              <span style={{ width: `${rescuePercent}%` }} />
-            </div>
-            <div className="rescue-meter-copy">{rescueProgress}/{rescueTarget} word cards rescued</div>
-            {noMoves && !gameComplete && <p className="reward-guidance">No pairs left. Try the remaining cards again.</p>}
-            <div className="reward-clear-board" role="grid" aria-label="Reward word card board">
-              {board.map((row, rowIndex) =>
-                row.map((tile, colIndex) => {
-                  if (!tile) {
+          <div className="reward-rescue-layout">
+            {activeGame === "monster" ? (
+              <HungryMonsterGame pack={pack} onComplete={handleGameComplete} />
+            ) : activeGame === "balloon" ? (
+              <BalloonPopGame pack={pack} onComplete={handleGameComplete} />
+            ) : (
+              <div className="reward-board-shell">
+              <p className={`reward-guidance ${pairFlash ?? ""}`}>
+                {gameComplete
+                  ? "Planet rescued! Your video bonus is unlocked."
+                  : pairFlash === "miss"
+                    ? "Not a match. That card is selected now."
+                  : selectedCell
+                    ? "Card selected. Find its twin."
+                  : pairFlash === "match"
+                      ? "Pair cleared! Pick your next match."
+                    : "Tap a word, then find its twin."}
+              </p>
+              <div className="rescue-meter" aria-label="Rescue meter">
+                <span style={{ width: `${rescuePercent}%` }} />
+              </div>
+              <div className="rescue-meter-copy">{rescueProgress}/{rescueTarget} word cards rescued</div>
+              {noMoves && !gameComplete && <p className="reward-guidance">No pairs left. Try the remaining cards again.</p>}
+              <div className="reward-clear-board" role="grid" aria-label="Reward word card board">
+                {board.map((row, rowIndex) =>
+                  row.map((tile, colIndex) => {
+                    if (!tile) {
+                      return (
+                        <div
+                          className="reward-clear-slot empty"
+                          key={`empty-${rowIndex}-${colIndex}`}
+                          role="gridcell"
+                          aria-label="Cleared card"
+                        />
+                      );
+                    }
+                    const isSelected = selectedCell?.row === rowIndex && selectedCell.col === colIndex;
                     return (
-                      <div
-                        className="reward-clear-slot empty"
-                        key={`empty-${rowIndex}-${colIndex}`}
+                      <button
+                        className={`reward-clear-tile ${tile.kind} ${isSelected ? "selected" : ""} ${pairFlash === "match" ? "pair-pop" : ""}`}
+                        key={tile.id}
+                        type="button"
                         role="gridcell"
-                        aria-label="Cleared card"
-                      />
+                        onClick={() => clearTile(rowIndex, colIndex)}
+                        disabled={gameComplete}
+                        data-token={tile.token}
+                        aria-pressed={isSelected}
+                        aria-label={`${tile.label}${isSelected ? ", selected" : ""}`}
+                      >
+                        <span className="reward-card-sound" aria-hidden="true"><Volume2 size={12} /></span>
+                        {tile.kind === "picture" && tile.imageUrl ? (
+                          <img src={tile.imageUrl} alt="" />
+                        ) : (
+                          <span className="reward-card-word">{tile.label}</span>
+                        )}
+                      </button>
                     );
-                  }
-                  const isSelected = selectedCell?.row === rowIndex && selectedCell.col === colIndex;
-                  return (
-                    <button
-                      className={`reward-clear-tile ${tile.kind} ${isSelected ? "selected" : ""} ${pairFlash === "match" ? "pair-pop" : ""}`}
-                      key={tile.id}
-                      type="button"
-                      role="gridcell"
-                      onClick={() => clearTile(rowIndex, colIndex)}
-                      disabled={gameComplete}
-                      data-token={tile.token}
-                      aria-pressed={isSelected}
-                      aria-label={`${tile.label}${isSelected ? ", selected" : ""}`}
-                    >
-                      <span className="reward-card-sound" aria-hidden="true"><Volume2 size={12} /></span>
-                      {tile.kind === "picture" && tile.imageUrl ? (
-                        <img src={tile.imageUrl} alt="" />
-                      ) : (
-                        <span className="reward-card-word">{tile.label}</span>
-                      )}
-                    </button>
-                  );
-                })
-              )}
+                  })
+                )}
+              </div>
             </div>
+            )}
           </div>
-          )}
-        </div>
-      </section>
+        </section>
+      )}
 
       {gameComplete && (
         <section className="video-bonus" aria-label="Video Bonus">

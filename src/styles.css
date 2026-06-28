@@ -3954,3 +3954,232 @@ video {
     opacity: 0;
   }
 }
+
+/* Reward game chooser — kids pick which mini-game to play. Trophies are a
+   cosmetic "earned" badge that persists in localStorage; we never lock cards. */
+.reward-game-chooser {
+  width: min(100%, 760px);
+  display: grid;
+  gap: 16px;
+  padding: 18px 20px 22px;
+  border-radius: 22px;
+  background: linear-gradient(160deg, rgba(255, 255, 255, 0.78), rgba(217, 240, 255, 0.6));
+  border: 3px solid rgba(123, 197, 247, 0.45);
+  box-shadow:
+    inset 0 -10px 0 rgba(15, 79, 143, 0.06),
+    0 10px 22px rgba(38, 97, 145, 0.14);
+}
+
+.reward-game-chooser-header {
+  display: grid;
+  gap: 4px;
+  justify-items: start;
+  color: #0f4f8f;
+}
+
+.reward-game-chooser-header h3 {
+  margin: 0;
+  color: #0f4f8f;
+  font-size: 1.35rem;
+}
+
+.reward-game-chooser-bubble {
+  margin: 2px 0 0;
+  color: #0f4f8f;
+  font-size: 0.92rem;
+}
+
+.reward-game-chooser-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.reward-game-chooser-card {
+  position: relative;
+  display: grid;
+  gap: 6px;
+  justify-items: center;
+  align-content: start;
+  min-height: 168px;
+  padding: 18px 12px 14px;
+  border-radius: 22px;
+  border: 3px solid #6fc4ff;
+  background: linear-gradient(145deg, #ffffff, #e3f4ff);
+  color: #0f2758;
+  text-align: center;
+  font-weight: 900;
+  cursor: pointer;
+  box-shadow:
+    inset 0 -8px 0 rgba(15, 39, 88, 0.08),
+    0 8px 0 rgba(50, 141, 210, 0.24),
+    0 14px 22px rgba(38, 97, 145, 0.16);
+  transition: transform 140ms ease, box-shadow 140ms ease;
+}
+
+.reward-game-chooser-card:nth-child(2) {
+  border-color: #ff9ec2;
+  background: linear-gradient(145deg, #ffffff, #fff0f6);
+}
+
+.reward-game-chooser-card:nth-child(3) {
+  border-color: #95d55f;
+  background: linear-gradient(145deg, #ffffff, #f0ffe5);
+}
+
+.reward-game-chooser-card:not(:disabled):hover {
+  transform: translateY(-3px) scale(1.02);
+  box-shadow:
+    inset 0 -8px 0 rgba(15, 39, 88, 0.08),
+    0 12px 0 rgba(50, 141, 210, 0.22),
+    0 18px 26px rgba(38, 97, 145, 0.18);
+}
+
+.reward-game-chooser-emoji {
+  font-size: 2.4rem;
+  line-height: 1;
+}
+
+.reward-game-chooser-card strong {
+  font-size: 1.08rem;
+  color: #0f2758;
+}
+
+.reward-game-chooser-blurb {
+  font-size: 0.86rem;
+  font-weight: 600;
+  color: #205a8b;
+  line-height: 1.2;
+}
+
+.reward-game-chooser-trophy {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 4px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: linear-gradient(145deg, #fff4cf, #ffd86b);
+  color: #8a4a00;
+  font-size: 0.78rem;
+  font-weight: 900;
+  box-shadow: 0 4px 0 rgba(196, 124, 8, 0.32);
+}
+
+.reward-game-chooser-card.earned {
+  border-color: #fb8b1b;
+  box-shadow:
+    inset 0 -8px 0 rgba(154, 74, 0, 0.1),
+    0 0 0 3px rgba(251, 139, 27, 0.16),
+    0 10px 0 rgba(220, 117, 14, 0.22),
+    0 16px 24px rgba(251, 139, 27, 0.18);
+}
+
+/* Header row when a game is active — "Pick another game" button next to the
+   milestone trail. */
+.reward-rescue-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.reward-change-game {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 18px;
+  border-radius: 999px;
+  border: 2px solid #ffffff;
+  background: rgba(255, 255, 255, 0.92);
+  color: #0f4f8f;
+  font-weight: 900;
+  font-size: 0.95rem;
+  cursor: pointer;
+  box-shadow:
+    inset 0 -4px 0 rgba(15, 79, 143, 0.1),
+    0 5px 0 rgba(50, 141, 210, 0.32),
+    0 10px 16px rgba(38, 97, 145, 0.22);
+  transition: transform 120ms ease, box-shadow 120ms ease, background 120ms ease;
+}
+
+.reward-change-game:hover {
+  transform: translateY(-2px);
+  background: #ffffff;
+  box-shadow:
+    inset 0 -4px 0 rgba(15, 79, 143, 0.1),
+    0 7px 0 rgba(50, 141, 210, 0.34),
+    0 14px 22px rgba(38, 97, 145, 0.24);
+}
+
+.reward-change-game:active {
+  transform: translateY(0);
+  box-shadow:
+    inset 0 -2px 0 rgba(15, 79, 143, 0.12),
+    0 3px 0 rgba(50, 141, 210, 0.3);
+}
+
+/* Hungry Monster is a listen-and-choose drill: the target word is delivered
+   as audio (never shown), the kid replays it with this button, then taps the
+   matching visible word in the choice grid below. */
+.reward-target-card.listen-card {
+  gap: 8px;
+  min-width: min(100%, 220px);
+}
+
+.reward-listen-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 22px;
+  border-radius: 999px;
+  border: 3px solid #6fc4ff;
+  background: linear-gradient(145deg, #ffffff, #dff1ff);
+  color: #0f4f8f;
+  font-weight: 950;
+  font-size: 1.1rem;
+  cursor: pointer;
+  box-shadow:
+    inset 0 -5px 0 rgba(15, 79, 143, 0.08),
+    0 6px 0 rgba(50, 141, 210, 0.28),
+    0 12px 18px rgba(38, 97, 145, 0.18);
+  transition: transform 120ms ease, box-shadow 120ms ease;
+}
+
+.reward-listen-button:not(:disabled):hover {
+  transform: translateY(-2px);
+  box-shadow:
+    inset 0 -5px 0 rgba(15, 79, 143, 0.08),
+    0 8px 0 rgba(50, 141, 210, 0.3),
+    0 16px 22px rgba(38, 97, 145, 0.22);
+}
+
+.reward-listen-button:not(:disabled):active {
+  transform: translateY(0);
+  box-shadow:
+    inset 0 -3px 0 rgba(15, 79, 143, 0.1),
+    0 3px 0 rgba(50, 141, 210, 0.26);
+}
+
+.reward-listen-button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.reward-listen-hint {
+  margin: 0 0 -2px;
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: #0f4f8f;
+  text-align: center;
+}
+
+@media (max-width: 600px) {
+  .reward-game-chooser-grid {
+    grid-template-columns: 1fr;
+  }
+  .reward-game-chooser-card {
+    min-height: 132px;
+  }
+}

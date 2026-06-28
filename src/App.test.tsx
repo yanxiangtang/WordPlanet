@@ -282,8 +282,12 @@ describe("mission dock navigation", () => {
 
     const rewardPanel = mount.querySelector<HTMLElement>(".inline-activity.reward");
     expect(rewardPanel?.textContent).not.toContain("Finish the missing practice below to unlock the video");
-    expect(rewardPanel?.querySelector(".reward-clear-game")).not.toBeNull();
-    expect(rewardPanel?.textContent).toMatch(/Word Card Rescue|Hungry Monster|Balloon Pop/);
+    // Reward phase opens with the kid-facing chooser; before a game is picked
+    // the three game cards are visible and the in-game board is not.
+    expect(rewardPanel?.querySelector(".reward-game-chooser")).not.toBeNull();
+    expect(rewardPanel?.textContent).toMatch(/Word Card Rescue/);
+    expect(rewardPanel?.textContent).toMatch(/Hungry Monster/);
+    expect(rewardPanel?.textContent).toMatch(/Balloon Pop/);
 
     const gameStep = Array.from(mount.querySelectorAll<HTMLButtonElement>(".mission-stepper-item")).find((button) =>
       button.textContent?.includes("Game")
@@ -681,6 +685,9 @@ describe("reward clear game", () => {
     root = undefined;
     container = undefined;
     vi.mocked(speak).mockClear();
+    // The chooser persists the last-picked game in localStorage so a refresh
+    // returns to the same game; clear it so tests start from the chooser.
+    localStorage?.clear();
   });
 
   it("renders the clear game before the video bonus", () => {
@@ -869,6 +876,197 @@ describe("reward clear game", () => {
     });
 
     expect(speak).toHaveBeenCalledWith(card?.textContent, 1);
+  });
+
+  it("opens with a chooser that lists all three reward games and no game board", () => {
+    const mount = document.createElement("div");
+    container = mount;
+    document.body.append(mount);
+    root = createRoot(mount);
+    const words = selectMissionWords("yilin-grade3", "3A", 5);
+    const pack = buildSampleLessonPack(words, { setId: "chooser-test", title: "Test mission" });
+    const video: VideoTaskState = { status: "idle", progress: 0 };
+
+    act(() => {
+      root?.render(<RewardInline complete={true} pack={pack} video={video} onCreate={() => {}} onSummary={() => {}} />);
+    });
+
+    const chooser = mount.querySelector<HTMLElement>(".reward-game-chooser");
+    expect(chooser).not.toBeNull();
+    const cards = Array.from(mount.querySelectorAll<HTMLButtonElement>(".reward-game-chooser-card"));
+    expect(cards).toHaveLength(3);
+    expect(cards.map((card) => card.dataset.game)).toEqual(["twin", "monster", "balloon"]);
+    expect(chooser?.textContent).toContain("Word Card Rescue");
+    expect(chooser?.textContent).toContain("Hungry Monster");
+    expect(chooser?.textContent).toContain("Balloon Pop");
+    // No game body until the kid picks one.
+    expect(mount.querySelector(".reward-clear-board")).toBeNull();
+    expect(mount.querySelector(".reward-mini-game")).toBeNull();
+  });
+
+  it("starts the picked game and lets the kid return to the chooser", () => {
+    const mount = document.createElement("div");
+    container = mount;
+    document.body.append(mount);
+    root = createRoot(mount);
+    const words = selectMissionWords("yilin-grade3", "3A", 5);
+    const pack = buildSampleLessonPack(words, { setId: "chooser-pick", title: "Test mission" });
+    const video: VideoTaskState = { status: "idle", progress: 0 };
+
+    act(() => {
+      root?.render(<RewardInline complete={true} pack={pack} video={video} onCreate={() => {}} onSummary={() => {}} />);
+    });
+
+    const balloonCard = mount.querySelector<HTMLButtonElement>(".reward-game-chooser-card[data-game='balloon']");
+    expect(balloonCard).not.toBeNull();
+    act(() => {
+      balloonCard?.click();
+    });
+
+    expect(mount.querySelector(".reward-game-chooser")).toBeNull();
+    expect(mount.querySelector<HTMLElement>(".reward-clear-game h3")?.textContent).toBe("Balloon Pop");
+    expect(mount.querySelector(".reward-balloon")).not.toBeNull();
+    // Picking a game persists it so a refresh returns the kid to the same game.
+    expect(localStorage.getItem("word-planet:reward-game-last-pick:v1")).toContain("balloon");
+
+    const changeButton = mount.querySelector<HTMLButtonElement>(".reward-change-game");
+    expect(changeButton).not.toBeNull();
+    act(() => {
+      changeButton?.click();
+    });
+
+    expect(mount.querySelector(".reward-game-chooser")).not.toBeNull();
+    expect(mount.querySelector(".reward-balloon")).toBeNull();
+    // The back button is the explicit way to return — it also clears the
+    // persisted pick so the next fresh mount opens the chooser.
+    expect(localStorage.getItem("word-planet:reward-game-last-pick:v1")).toBeNull();
+  });
+
+  it("reopens the last-picked game on a fresh mount (refresh behavior)", () => {
+    // Simulate a kid having picked Hungry Monster before the page reloaded.
+    localStorage.setItem("word-planet:reward-game-last-pick:v1", JSON.stringify({ kind: "monster" }));
+
+    const mount = document.createElement("div");
+    container = mount;
+    document.body.append(mount);
+    root = createRoot(mount);
+    const words = selectMissionWords("yilin-grade3", "3A", 5);
+    const pack = buildSampleLessonPack(words, { setId: "refresh-test", title: "Test mission" });
+    const video: VideoTaskState = { status: "idle", progress: 0 };
+
+    act(() => {
+      root?.render(<RewardInline complete={true} pack={pack} video={video} onCreate={() => {}} onSummary={() => {}} />);
+    });
+
+    // Lands directly in Hungry Monster — no chooser shown.
+    expect(mount.querySelector(".reward-game-chooser")).toBeNull();
+    expect(mount.querySelector<HTMLElement>(".reward-clear-game h3")?.textContent).toBe("Hungry Monster");
+    expect(mount.querySelector(".reward-monster-stage")).not.toBeNull();
+    // The explicit back button is still available so the kid can switch games.
+    expect(mount.querySelector(".reward-change-game")).not.toBeNull();
+  });
+
+  it("marks earned games with a trophy badge", () => {
+    const mount = document.createElement("div");
+    container = mount;
+    document.body.append(mount);
+    root = createRoot(mount);
+    const words = selectMissionWords("yilin-grade3", "3A", 5);
+    const pack = buildSampleLessonPack(words, { setId: "chooser-trophy", title: "Test mission" });
+    const video: VideoTaskState = { status: "idle", progress: 0 };
+
+    act(() => {
+      root?.render(
+        <RewardInline
+          complete={true}
+          pack={pack}
+          video={video}
+          onCreate={() => {}}
+          onSummary={() => {}}
+          earnedRewardGames={["monster"]}
+        />
+      );
+    });
+
+    const monsterCard = mount.querySelector<HTMLButtonElement>(".reward-game-chooser-card[data-game='monster']");
+    expect(monsterCard?.classList.contains("earned")).toBe(true);
+    expect(monsterCard?.querySelector(".reward-game-chooser-trophy")).not.toBeNull();
+
+    const balloonCard = mount.querySelector<HTMLButtonElement>(".reward-game-chooser-card[data-game='balloon']");
+    expect(balloonCard?.classList.contains("earned")).toBe(false);
+    expect(balloonCard?.querySelector(".reward-game-chooser-trophy")).toBeNull();
+  });
+
+  it("fires onGameEarned with the right kind when Balloon Pop completes", () => {
+    const earned: string[] = [];
+    const result = renderReward("balloon");
+    // Tear down the default render and replay with the earner callback wired up.
+    act(() => {
+      root?.unmount();
+    });
+    container?.remove();
+
+    const mount2 = document.createElement("div");
+    container = mount2;
+    document.body.append(mount2);
+    root = createRoot(mount2);
+    const video: VideoTaskState = { status: "completed", progress: 100, url: "blob:reward", promptVersion: REWARD_VIDEO_PROMPT_VERSION };
+
+    act(() => {
+      root?.render(
+        <RewardInline
+          complete={true}
+          pack={result.pack}
+          video={video}
+          onCreate={() => {}}
+          onSummary={() => {}}
+          rewardGame="balloon"
+          onGameEarned={(kind) => earned.push(kind)}
+        />
+      );
+    });
+
+    completeTargetGame({ mount: mount2 }, ".reward-balloon");
+    expect(earned).toContain("balloon");
+  });
+
+  it("hides the target word and shows visible word choices on Hungry Monster", () => {
+    const result = renderReward("monster");
+    // The target word is delivered as audio only — never shown on the card.
+    const targetCard = result.mount.querySelector<HTMLElement>(".reward-target-card");
+    const target = targetCard?.dataset.currentTarget ?? "";
+    expect(target).not.toBe("");
+    expect((targetCard?.textContent ?? "").toLowerCase()).not.toContain(target.toLowerCase());
+    // The Listen button is the explicit way to hear the word again.
+    expect(result.mount.querySelector(".reward-listen-button")).not.toBeNull();
+    // Choice cards show the words so the kid can read and choose.
+    const cards = Array.from(result.mount.querySelectorAll<HTMLButtonElement>(".reward-choice-card"));
+    expect(cards.length).toBeGreaterThan(0);
+    for (const card of cards) {
+      expect((card.textContent ?? "").trim()).toBe(card.dataset.word ?? "");
+    }
+  });
+
+  it("replays the target word when the Listen button is tapped", () => {
+    const result = renderReward("monster");
+    const target = result.mount.querySelector<HTMLElement>("[data-current-target]")?.dataset.currentTarget ?? "";
+    expect(target).not.toBe("");
+
+    vi.mocked(speak).mockClear();
+    const listen = result.mount.querySelector<HTMLButtonElement>(".reward-listen-button");
+    expect(listen).not.toBeNull();
+    act(() => {
+      listen?.click();
+    });
+    expect(speak).toHaveBeenCalledWith(target, 0.9);
+  });
+
+  it("speaks the target word when the Hungry Monster round changes", () => {
+    const result = renderReward("monster");
+    const target = result.mount.querySelector<HTMLElement>("[data-current-target]")?.dataset.currentTarget ?? "";
+    expect(target).not.toBe("");
+    // The round-start effect spoke the target before any tap.
+    expect(speak).toHaveBeenCalledWith(target, 0.9);
   });
 });
 
