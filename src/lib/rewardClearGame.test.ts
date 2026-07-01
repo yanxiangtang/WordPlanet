@@ -3,9 +3,13 @@ import type { WordEntry } from "../types";
 import {
   buildRewardBoard,
   buildRewardChoices,
+  buildCakeMaterialChoices,
+  buildCakeImagePrompt,
+  calculateCakeScore,
   buildRewardWordPool,
   clearRewardPair,
   hasRewardMove,
+  type CakePick,
   type RewardBoard,
   type RewardTile
 } from "./rewardClearGame";
@@ -148,5 +152,49 @@ describe("reward clear game board helpers", () => {
     expect(choices).toHaveLength(4);
     expect(choices.some((choice) => choice.wordId === words[1].id)).toBe(true);
     expect(new Set(choices.map((choice) => choice.id)).size).toBe(4);
+  });
+
+  it("builds four deterministic cake material choices", () => {
+    const choices = buildCakeMaterialChoices("monster-game", 2);
+
+    expect(choices).toHaveLength(4);
+    expect(new Set(choices.map((choice) => choice.id)).size).toBe(4);
+    expect(choices.every((choice) => choice.emoji && choice.label && choice.color)).toBe(true);
+    expect(buildCakeMaterialChoices("monster-game", 2).map((choice) => choice.id)).toEqual(
+      choices.map((choice) => choice.id)
+    );
+  });
+
+  it("scores cake variety higher when more topping families are used", () => {
+    const repeated: CakePick[] = [
+      { id: "strawberry-frosting", family: "frosting", label: "Strawberry Frosting", emoji: "🍓", color: "#ff8fc7", slotIndex: 0 },
+      { id: "blueberry-frosting", family: "frosting", label: "Blueberry Frosting", emoji: "🫐", color: "#8bb7ff", slotIndex: 1 },
+      { id: "lemon-frosting", family: "frosting", label: "Lemon Frosting", emoji: "🍋", color: "#ffe36d", slotIndex: 2 }
+    ];
+    const varied: CakePick[] = [
+      repeated[0],
+      { id: "banana-slices", family: "fruit", label: "Banana Slices", emoji: "🍌", color: "#ffe36d", slotIndex: 1 },
+      { id: "rainbow-sprinkles", family: "sprinkle", label: "Rainbow Sprinkles", emoji: "🌈", color: "#76d7ff", slotIndex: 2 },
+      { id: "star-candle", family: "candle", label: "Star Candle", emoji: "⭐", color: "#ffd166", slotIndex: 3 }
+    ];
+
+    expect(calculateCakeScore(varied).stars).toBeGreaterThan(calculateCakeScore(repeated).stars);
+    expect(calculateCakeScore(varied).title).toBe("Rainbow Chef");
+  });
+
+  it("builds a final cake image prompt from the selected toppings", () => {
+    const picks: CakePick[] = [
+      { id: "strawberry-frosting", family: "frosting", label: "Strawberry Frosting", emoji: "🍓", color: "#ff8fc7", slotIndex: 0 },
+      { id: "banana-slices", family: "fruit", label: "Banana Slices", emoji: "🍌", color: "#ffe36d", slotIndex: 1 },
+      { id: "choco-chips", family: "chocolate", label: "Choco Chips", emoji: "🍫", color: "#8b4a2b", slotIndex: 2 }
+    ];
+
+    const prompt = buildCakeImagePrompt(picks, "soft watercolor cartoon");
+
+    expect(prompt).toContain("Strawberry Frosting");
+    expect(prompt).toContain("Banana Slices");
+    expect(prompt).toContain("Choco Chips");
+    expect(prompt).toContain("soft watercolor cartoon");
+    expect(prompt).toContain("No readable text");
   });
 });

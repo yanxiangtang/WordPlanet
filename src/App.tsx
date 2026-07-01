@@ -61,11 +61,17 @@ import {
   type PracticeGap
 } from "./lib/mastery";
 import {
+  buildCakeMaterialChoices,
+  buildCakeImagePrompt,
   buildRewardBoard,
   buildRewardChoices,
   buildRewardWordPool,
+  calculateCakeScore,
   clearRewardPair,
   hasRewardMove,
+  placeCakeMaterial,
+  type CakeMaterial,
+  type CakePick,
   type RewardCell,
   type RewardBoard,
   type RewardTile,
@@ -1910,6 +1916,7 @@ function MissionDashboard({
                 <RewardInline
                   complete={complete}
                   pack={pack}
+                  settings={settings}
                   video={video}
                   onCreate={onCreateVideo}
                   onSummary={onRewardSummary}
@@ -2650,25 +2657,59 @@ function wordEntryForRewardItem(pack: LessonPack, item: RewardWordItem): WordEnt
   return pack.words.find((word) => word.id === item.wordId) ?? rewardItemToWordEntry(item);
 }
 
-function HungryMonsterGame({ pack, onComplete }: { pack: LessonPack; onComplete: () => void }) {
+function HungryMonsterGame({
+  pack,
+  settings,
+  onComplete
+}: {
+  pack: LessonPack;
+  settings: AgnesSettings;
+  onComplete: () => void;
+}) {
   const targetTotal = 10;
   const targets = useMemo(() => buildRewardWordPool(pack.words, targetTotal), [pack.id, pack.words]);
   const [progress, setProgress] = useState(0);
   const [feedbackId, setFeedbackId] = useState<string | null>(null);
+  const [phase, setPhase] = useState<"word" | "material">("word");
+  const [cakePicks, setCakePicks] = useState<CakePick[]>([]);
+  const [wrongWordTaps, setWrongWordTaps] = useState(0);
+  const [cakeImage, setCakeImage] = useState<{ status: "idle" | "drawing" | "ready" | "error"; url?: string; error?: string }>({
+    status: "idle"
+  });
   const currentTarget = targets[Math.min(progress, targets.length - 1)];
   const targetWord = currentTarget ? wordEntryForRewardItem(pack, currentTarget) : null;
   const choices = useMemo(
     () => (targetWord ? buildRewardChoices(pack.words, targetWord, 4, `${pack.id}-monster-${progress}`) : []),
     [pack, pack.id, progress, targetWord]
   );
+  const materialChoiceCount = Math.max(1, 4 - wrongWordTaps);
+  const materialChoices = useMemo(
+    () => buildCakeMaterialChoices(pack.id, progress).slice(0, materialChoiceCount),
+    [pack.id, progress, materialChoiceCount]
+  );
   const rescuePercent = Math.min(100, Math.round((progress / targetTotal) * 100));
+  const cakeScore = useMemo(() => calculateCakeScore(cakePicks), [cakePicks]);
+  const gameDone = progress >= targetTotal;
 
   const firstSpeakRef = useRef(false);
   useEffect(() => {
     setProgress(0);
     setFeedbackId(null);
+    setPhase("word");
+    setCakePicks([]);
+    setWrongWordTaps(0);
+    setCakeImage((current) => {
+      if (current.url) URL.revokeObjectURL(current.url);
+      return { status: "idle" };
+    });
     firstSpeakRef.current = false;
   }, [pack.id]);
+
+  useEffect(() => {
+    return () => {
+      if (cakeImage.url) URL.revokeObjectURL(cakeImage.url);
+    };
+  }, [cakeImage.url]);
 
   // Speak the very first target word once when the kid enters the game so
   // they immediately hear what to listen for. Later rounds don't auto-speak —
@@ -2687,11 +2728,12 @@ function HungryMonsterGame({ pack, onComplete }: { pack: LessonPack; onComplete:
   }
 
   function chooseWord(choice: RewardWordItem) {
-    if (!targetWord || progress >= targetTotal) return;
+    if (!targetWord || gameDone || phase !== "word") return;
     setFeedbackId(choice.id);
     if (choice.wordId !== targetWord.id) {
       // Replay the target so the kid can compare what they heard with what
       // they tapped. No progress penalty — they keep trying.
+      setWrongWordTaps((count) => count + 1);
       speak(targetWord.word, 0.9);
       return;
     }
@@ -2700,57 +2742,184 @@ function HungryMonsterGame({ pack, onComplete }: { pack: LessonPack; onComplete:
     // deferred — the kid hears their win, then can tap Listen for the next
     // round (or chooseWord pronounces a wrong tap, which doubles as the cue).
     speak(choice.word, 1);
+    setPhase("material");
+  }
+
+  function chooseMaterial(material: CakeMaterial) {
+    if (gameDone || phase !== "material") return;
+    const pick = placeCakeMaterial(material, cakePicks);
+    const nextPicks = [...cakePicks, pick];
     const nextProgress = progress + 1;
+    setCakePicks(nextPicks);
     setProgress(nextProgress);
-    if (nextProgress >= targetTotal) onComplete();
+    setFeedbackId(null);
+    setPhase("word");
+    setWrongWordTaps(0);
+    if (nextProgress >= targetTotal) {
+      const finalScore = calculateCakeScore(nextPicks);
+      speak(`Yum yum! ${finalScore.title} cake!`, 1.05);
+      void drawFinalCake(nextPicks);
+      onComplete();
+    }
+  }
+
+  async function drawFinalCake(picks: CakePick[]) {
+    if (!settings.apiKey.trim()) return;
+    setCakeImage((current) => {
+      if (current.url) URL.revokeObjectURL(current.url);
+      return { status: "drawing" };
+    });
+    try {
+      const style = getStyle(pack.artStyleId)?.descriptor ?? getStyle(DEFAULT_STYLE_ID)?.descriptor ?? "bright friendly cartoon";
+      const prompt = buildCakeImagePrompt(picks, style);
+      const blob = await requestAgnesImage(settings, prompt);
+      const url = URL.createObjectURL(blob);
+      setCakeImage({ status: "ready", url });
+    } catch (error) {
+      setCakeImage({ status: "error", error: error instanceof Error ? error.message : "Agnes cake image failed." });
+    }
   }
 
   return (
-    <div className="reward-board-shell reward-mini-game">
-      <div className="reward-monster-stage">
+    <div className="reward-board-shell reward-mini-game reward-bakery-workbench">
+      <div className={`reward-monster-stage bakery-monster-panel ${gameDone ? "served eating" : ""}`}>
         <div className="reward-monster-face" aria-hidden="true">
           <span className="monster-eye" />
           <span className="monster-eye" />
           <span className="monster-mouth" />
+          {gameDone ? (
+            <>
+              <span className="monster-crumb crumb-one" />
+              <span className="monster-crumb crumb-two" />
+              <span className="monster-crumb crumb-three" />
+            </>
+          ) : null}
         </div>
         <div className="reward-target-card listen-card" data-current-target={targetWord?.word ?? ""}>
-          <span>Feed me the word</span>
-          <button
-            type="button"
-            className="reward-listen-button"
-            onClick={replayTarget}
-            disabled={!targetWord || progress >= targetTotal}
-            aria-label="Listen to the word again"
-          >
-            <Volume2 size={32} aria-hidden="true" />
-            <span>Listen</span>
-          </button>
+          <span>{gameDone ? "Yum yum" : phase === "material" ? "Choose cake material" : "Feed me the word"}</span>
+          {gameDone ? (
+            <strong className="cake-score">Cake score {cakeScore.stars}/5</strong>
+          ) : (
+            <button
+              type="button"
+              className="reward-listen-button"
+              onClick={replayTarget}
+              disabled={!targetWord || gameDone || phase !== "word"}
+              aria-label="Listen to the word again"
+            >
+              <Volume2 size={32} aria-hidden="true" />
+              <span>Listen</span>
+            </button>
+          )}
         </div>
+      </div>
+      <div className="cake-station-panel" aria-label="Cake station">
+        <p className="cake-station-title">{gameDone ? cakeScore.title : "Build the monster cake"}</p>
+        <div className={`cake-plate ${gameDone ? "served eating" : ""} ${cakeImage.status === "ready" ? "generated" : ""}`}>
+          {cakeImage.status === "ready" && cakeImage.url ? (
+            <img className="cake-generated-image" src={cakeImage.url} alt="Agnes-generated final cake" />
+          ) : (
+            <>
+              <div className="cake-layer cake-layer-bottom" />
+              <div className="cake-layer cake-layer-top" />
+              {cakePicks.map((pick) => (
+                <span
+                  className={`cake-topping ${pick.family}`}
+                  key={`${pick.id}-${pick.slotIndex}`}
+                  style={{
+                    ["--cake-color" as string]: pick.color,
+                    ["--cake-slot" as string]: String(pick.slotIndex)
+                  }}
+                  aria-label={pick.label}
+                >
+                  {pick.emoji}
+                </span>
+              ))}
+            </>
+          )}
+        </div>
+        {gameDone ? (
+          <>
+            <div className="cake-score-stars" aria-label={`Cake score ${cakeScore.stars} out of 5`}>
+              {Array.from({ length: 5 }, (_, index) => (
+                <Star key={index} size={22} fill={index < cakeScore.stars ? "currentColor" : "none"} aria-hidden="true" />
+              ))}
+            </div>
+            <p className="cake-station-copy">
+              {cakeImage.status === "ready"
+                ? "Final cake drawn by Agnes."
+                : cakeImage.status === "drawing"
+                  ? "Agnes is drawing your final cake..."
+                  : cakeImage.status === "error"
+                    ? "Agnes could not draw this cake, so your handmade cake stays here."
+                    : "Your handmade cake is ready."}
+            </p>
+          </>
+        ) : (
+          <p className="cake-station-copy">Pick different toppings for a bigger variety score.</p>
+        )}
+      </div>
+      <div className="bakery-choice-panel">
+        {phase === "material" && !gameDone ? (
+          <>
+            <p className="reward-listen-hint">Nice word! Choose one cake material.</p>
+            {wrongWordTaps > 0 && (
+              <p className="cake-option-penalty">
+                {materialChoiceCount} cake material{materialChoiceCount === 1 ? "" : "s"} left
+              </p>
+            )}
+            <div className="cake-material-grid" aria-label="Cake material choices">
+              {materialChoices.map((material) => (
+                <button
+                  className="cake-material-card"
+                  key={material.id}
+                  type="button"
+                  onClick={() => chooseMaterial(material)}
+                  data-material={material.id}
+                  data-family={material.family}
+                  style={{ ["--cake-color" as string]: material.color }}
+                  aria-label={`Add ${material.label}`}
+                >
+                  <span className="cake-material-emoji" aria-hidden="true">{material.emoji}</span>
+                  <span>{material.label}</span>
+                </button>
+              ))}
+            </div>
+          </>
+        ) : gameDone ? (
+          <div className="cake-score-card">
+            <strong>{cakeScore.title}</strong>
+            <span>Yum yum! The monster loved your mix of toppings.</span>
+          </div>
+        ) : (
+          <>
+            <p className="reward-listen-hint">Listen to the word, then tap the matching snack.</p>
+            <div className="reward-choice-grid" aria-label="Monster word choices">
+              {choices.map((choice) => {
+                const feedbackClass =
+                  feedbackId === choice.id ? (choice.wordId === targetWord?.id ? "correct" : "wrong") : "";
+                return (
+                  <button
+                    className={`reward-choice-card ${feedbackClass}`}
+                    key={choice.id}
+                    type="button"
+                    onClick={() => chooseWord(choice)}
+                    data-word={choice.word}
+                    disabled={gameDone}
+                    aria-label={`Feed the word ${choice.word}`}
+                  >
+                    <span className="reward-card-word">{choice.word}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </>
+        )}
       </div>
       <div className="rescue-meter" aria-label="Snack meter">
         <span style={{ width: `${rescuePercent}%` }} />
       </div>
-      <div className="rescue-meter-copy">{progress}/{targetTotal} snacks delivered</div>
-      <p className="reward-listen-hint">Listen to the word, then tap the matching snack.</p>
-      <div className="reward-choice-grid" aria-label="Monster word choices">
-        {choices.map((choice) => {
-          const feedbackClass =
-            feedbackId === choice.id ? (choice.wordId === targetWord?.id ? "correct" : "wrong") : "";
-          return (
-            <button
-              className={`reward-choice-card ${feedbackClass}`}
-              key={choice.id}
-              type="button"
-              onClick={() => chooseWord(choice)}
-              data-word={choice.word}
-              disabled={progress >= targetTotal}
-              aria-label={`Feed the word ${choice.word}`}
-            >
-              <span className="reward-card-word">{choice.word}</span>
-            </button>
-          );
-        })}
-      </div>
+      <div className="rescue-meter-copy">{progress}/{targetTotal} cake materials</div>
     </div>
   );
 }
@@ -2865,6 +3034,7 @@ function RewardGameChooser({
 export function RewardInline({
   complete,
   pack,
+  settings = defaultSettings,
   video,
   onCreate,
   onSummary,
@@ -2874,6 +3044,7 @@ export function RewardInline({
 }: {
   complete: boolean;
   pack: LessonPack;
+  settings?: AgnesSettings;
   video: VideoTaskState;
   onCreate: () => void;
   onSummary: () => void;
@@ -3020,7 +3191,7 @@ export function RewardInline({
 
           <div className="reward-rescue-layout">
             {activeGame === "monster" ? (
-              <HungryMonsterGame pack={pack} onComplete={handleGameComplete} />
+              <HungryMonsterGame pack={pack} settings={settings} onComplete={handleGameComplete} />
             ) : activeGame === "balloon" ? (
               <BalloonPopGame pack={pack} onComplete={handleGameComplete} />
             ) : (

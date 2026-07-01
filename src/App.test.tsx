@@ -649,7 +649,12 @@ describe("reward clear game", () => {
   let container: HTMLDivElement | undefined;
   let mount: HTMLDivElement;
 
-  function renderReward(rewardGame: "twin" | "monster" | "balloon" = "twin", wordCount = 5, videoOverrides: Partial<VideoTaskState> = {}) {
+  function renderReward(
+    rewardGame: "twin" | "monster" | "balloon" = "twin",
+    wordCount = 5,
+    videoOverrides: Partial<VideoTaskState> = {},
+    settingsOverrides: Partial<typeof defaultSettings> = {}
+  ) {
     mount = document.createElement("div");
     container = mount;
     document.body.append(mount);
@@ -659,7 +664,17 @@ describe("reward clear game", () => {
     const video: VideoTaskState = { status: "completed", progress: 100, url: "blob:reward", promptVersion: REWARD_VIDEO_PROMPT_VERSION, ...videoOverrides };
 
     act(() => {
-      root?.render(<RewardInline complete={true} pack={pack} video={video} onCreate={() => {}} onSummary={() => {}} rewardGame={rewardGame} />);
+      root?.render(
+        <RewardInline
+          complete={true}
+          pack={pack}
+          settings={{ ...defaultSettings, ...settingsOverrides }}
+          video={video}
+          onCreate={() => {}}
+          onSummary={() => {}}
+          rewardGame={rewardGame}
+        />
+      );
     });
 
     return { mount, pack, video };
@@ -675,6 +690,29 @@ describe("reward clear game", () => {
         right?.click();
       });
     }
+  }
+
+  function completeHungryMonsterBakery(result: { mount: HTMLDivElement }) {
+    const pickedMaterials: string[] = [];
+    for (let index = 0; index < 10; index += 1) {
+      const target = result.mount.querySelector<HTMLElement>("[data-current-target]")?.dataset.currentTarget ?? "";
+      const right = Array.from(result.mount.querySelectorAll<HTMLButtonElement>(".reward-choice-card")).find(
+        (button) => button.dataset.word === target
+      );
+      expect(target).not.toBe("");
+      expect(right).toBeTruthy();
+      act(() => {
+        right?.click();
+      });
+
+      const material = result.mount.querySelector<HTMLButtonElement>(".cake-material-card");
+      expect(material).toBeTruthy();
+      pickedMaterials.push(material?.getAttribute("aria-label")?.replace(/^Add /, "") ?? "");
+      act(() => {
+        material?.click();
+      });
+    }
+    return pickedMaterials;
   }
 
   afterEach(() => {
@@ -719,7 +757,7 @@ describe("reward clear game", () => {
     expect(result.mount.textContent).not.toContain("Video Bonus");
   });
 
-  it("feeds the Hungry Monster only when the target word is tapped", () => {
+  it("opens cake material choices only after the Hungry Monster target word is tapped", () => {
     const result = renderReward("monster");
     const progress = () => result.mount.querySelector(".rescue-meter-copy")?.textContent ?? "";
     const target = result.mount.querySelector<HTMLElement>("[data-current-target]")?.dataset.currentTarget ?? "";
@@ -734,12 +772,101 @@ describe("reward clear game", () => {
       wrong?.click();
     });
     expect(progress()).toContain("0/");
+    expect(result.mount.querySelector(".cake-material-grid")).toBeNull();
 
     act(() => {
       right?.click();
     });
-    expect(progress()).toContain("1/");
+    expect(progress()).toContain("0/");
+    expect(result.mount.querySelector(".cake-material-grid")).not.toBeNull();
+    expect(result.mount.querySelectorAll(".cake-material-card")).toHaveLength(3);
+    expect(result.mount.textContent).toContain("3 cake materials left");
     expect(speak).toHaveBeenCalledWith(target, 1);
+  });
+
+  it("removes one cake material option for each wrong Hungry Monster word tap", () => {
+    const result = renderReward("monster");
+    const target = result.mount.querySelector<HTMLElement>("[data-current-target]")?.dataset.currentTarget ?? "";
+    const wrongCards = Array.from(result.mount.querySelectorAll<HTMLButtonElement>(".reward-choice-card")).filter(
+      (button) => button.dataset.word !== target
+    );
+    const right = Array.from(result.mount.querySelectorAll<HTMLButtonElement>(".reward-choice-card")).find(
+      (button) => button.dataset.word === target
+    );
+
+    expect(wrongCards.length).toBeGreaterThanOrEqual(3);
+    act(() => {
+      wrongCards[0]?.click();
+    });
+    act(() => {
+      wrongCards[1]?.click();
+    });
+    expect(result.mount.querySelector(".cake-material-grid")).toBeNull();
+
+    act(() => {
+      right?.click();
+    });
+
+    expect(result.mount.querySelectorAll(".cake-material-card")).toHaveLength(2);
+    expect(result.mount.textContent).toContain("2 cake materials left");
+  });
+
+  it("keeps at least one cake material option after many wrong Hungry Monster taps and resets next round", () => {
+    const result = renderReward("monster");
+    const firstTarget = result.mount.querySelector<HTMLElement>("[data-current-target]")?.dataset.currentTarget ?? "";
+    const firstWrong = Array.from(result.mount.querySelectorAll<HTMLButtonElement>(".reward-choice-card")).find(
+      (button) => button.dataset.word !== firstTarget
+    );
+    const firstRight = Array.from(result.mount.querySelectorAll<HTMLButtonElement>(".reward-choice-card")).find(
+      (button) => button.dataset.word === firstTarget
+    );
+
+    for (let index = 0; index < 6; index += 1) {
+      act(() => {
+        firstWrong?.click();
+      });
+    }
+    act(() => {
+      firstRight?.click();
+    });
+    expect(result.mount.querySelectorAll(".cake-material-card")).toHaveLength(1);
+
+    act(() => {
+      result.mount.querySelector<HTMLButtonElement>(".cake-material-card")?.click();
+    });
+    const secondTarget = result.mount.querySelector<HTMLElement>("[data-current-target]")?.dataset.currentTarget ?? "";
+    const secondRight = Array.from(result.mount.querySelectorAll<HTMLButtonElement>(".reward-choice-card")).find(
+      (button) => button.dataset.word === secondTarget
+    );
+    act(() => {
+      secondRight?.click();
+    });
+
+    expect(result.mount.querySelectorAll(".cake-material-card")).toHaveLength(4);
+    expect(result.mount.textContent).not.toContain("cake materials left");
+  });
+
+  it("adds the picked cake material before starting the next Hungry Monster word", () => {
+    const result = renderReward("monster");
+    const firstTarget = result.mount.querySelector<HTMLElement>("[data-current-target]")?.dataset.currentTarget ?? "";
+    const right = Array.from(result.mount.querySelectorAll<HTMLButtonElement>(".reward-choice-card")).find(
+      (button) => button.dataset.word === firstTarget
+    );
+
+    act(() => {
+      right?.click();
+    });
+    const material = result.mount.querySelector<HTMLButtonElement>(".cake-material-card");
+    expect(material).toBeTruthy();
+
+    act(() => {
+      material?.click();
+    });
+
+    expect(result.mount.querySelector(".cake-material-grid")).toBeNull();
+    expect(result.mount.querySelectorAll(".cake-topping")).toHaveLength(1);
+    expect(result.mount.querySelector(".rescue-meter-copy")?.textContent).toContain("1/10 cake materials");
+    expect(result.mount.querySelector<HTMLElement>("[data-current-target]")?.dataset.currentTarget).not.toBe(firstTarget);
   });
 
   it("pops only the matching Balloon Pop word", () => {
@@ -801,10 +928,51 @@ describe("reward clear game", () => {
   it("reveals the video bonus after Hungry Monster is complete", () => {
     const result = renderReward("monster");
 
-    completeTargetGame(result, ".reward-choice-card");
+    completeHungryMonsterBakery(result);
 
+    expect(result.mount.textContent).toContain("Cake score");
     expect(result.mount.textContent).toContain("Video Bonus");
     expect(result.mount.querySelector("video")).not.toBeNull();
+  });
+
+  it("animates and speaks when the Hungry Monster eats the finished cake", () => {
+    const result = renderReward("monster");
+
+    completeHungryMonsterBakery(result);
+
+    expect(result.mount.querySelector(".bakery-monster-panel.eating")).not.toBeNull();
+    expect(result.mount.querySelector(".cake-plate.eating")).not.toBeNull();
+    expect(result.mount.textContent).toContain("Yum yum");
+    expect(speak).toHaveBeenCalledWith(expect.stringContaining("Yum yum"), 1.05);
+  });
+
+  it("draws a final Agnes cake image from the selected Hungry Monster toppings", async () => {
+    const originalFetch = globalThis.fetch;
+    let prompt = "";
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body ?? "{}")) as { prompt?: string };
+      prompt = body.prompt ?? "";
+      return jsonResponse({ data: [{ b64_json: ONE_PIXEL_B64 }] });
+    });
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+    const result = renderReward("monster", 5, {}, { apiKey: "agnes-key" });
+
+    try {
+      const pickedMaterials = completeHungryMonsterBakery(result);
+      await act(async () => {
+        await flushAsyncWork(20);
+      });
+
+      const image = result.mount.querySelector<HTMLImageElement>(".cake-generated-image");
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(prompt).toContain(pickedMaterials[0]);
+      expect(prompt).toContain("selected by the child");
+      expect(image).not.toBeNull();
+      expect(image?.alt).toBe("Agnes-generated final cake");
+      expect(result.mount.textContent).toContain("Final cake drawn by Agnes");
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   });
 
   it("reveals the video bonus after Balloon Pop is complete", () => {

@@ -98,6 +98,25 @@ describe("mission stepper layout", () => {
 
     expect(pictureChoiceRule).toMatch(/object-fit\s*:\s*contain/);
   });
+
+  it("keeps Hungry Monster word labels inside narrow reward cards", () => {
+    const rewardCardWordRule = css.match(/\.reward-card-word\s*{(?<body>[^}]*)}/s)?.groups?.body ?? "";
+    const bakeryChoiceGridRule =
+      css.match(/\.bakery-choice-panel \.reward-choice-grid\s*{(?<body>[^}]*)}/s)?.groups?.body ?? "";
+
+    expect(rewardCardWordRule).toMatch(/max-width\s*:\s*100%/);
+    expect(rewardCardWordRule).toMatch(/overflow-wrap\s*:\s*break-word/);
+    expect(rewardCardWordRule).toMatch(/font-size\s*:\s*clamp\(/);
+    expect(bakeryChoiceGridRule).toMatch(/repeat\(auto-fit,\s*minmax\(96px,\s*1fr\)\)/);
+  });
+
+  it("fits the Agnes final cake image inside the cake station", () => {
+    const generatedCakeRule = css.match(/\.cake-generated-image\s*{(?<body>[^}]*)}/s)?.groups?.body ?? "";
+
+    expect(generatedCakeRule).toMatch(/width\s*:\s*100%/);
+    expect(generatedCakeRule).toMatch(/object-fit\s*:\s*cover/);
+    expect(generatedCakeRule).toMatch(/border-radius\s*:\s*18px/);
+  });
 });
 
 describe("lesson picker cover layout", () => {

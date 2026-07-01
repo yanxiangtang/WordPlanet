@@ -25,6 +25,25 @@ export type RewardWordItem = {
   word: string;
 };
 
+export type CakeMaterialFamily = "frosting" | "fruit" | "sprinkle" | "candle" | "cream" | "chocolate";
+
+export type CakeMaterial = {
+  id: string;
+  family: CakeMaterialFamily;
+  label: string;
+  emoji: string;
+  color: string;
+};
+
+export type CakePick = CakeMaterial & {
+  slotIndex: number;
+};
+
+export type CakeScore = {
+  stars: number;
+  title: string;
+};
+
 export type RewardBoardOptions = {
   words: WordEntry[];
   pack?: LessonPack;
@@ -35,6 +54,20 @@ export type RewardBoardOptions = {
 
 const DEFAULT_ROWS = 6;
 const DEFAULT_COLUMNS = 6;
+const CAKE_MATERIALS: CakeMaterial[] = [
+  { id: "strawberry-frosting", family: "frosting", label: "Strawberry Frosting", emoji: "🍓", color: "#ff8fc7" },
+  { id: "lemon-frosting", family: "frosting", label: "Lemon Frosting", emoji: "🍋", color: "#ffe36d" },
+  { id: "banana-slices", family: "fruit", label: "Banana Slices", emoji: "🍌", color: "#ffe36d" },
+  { id: "berry-drops", family: "fruit", label: "Berry Drops", emoji: "🫐", color: "#8bb7ff" },
+  { id: "rainbow-sprinkles", family: "sprinkle", label: "Rainbow Sprinkles", emoji: "🌈", color: "#76d7ff" },
+  { id: "star-sprinkles", family: "sprinkle", label: "Star Sprinkles", emoji: "⭐", color: "#ffd166" },
+  { id: "tiny-candle", family: "candle", label: "Tiny Candle", emoji: "🕯️", color: "#ff9f7a" },
+  { id: "party-candle", family: "candle", label: "Party Candle", emoji: "🎉", color: "#c084fc" },
+  { id: "cloud-cream", family: "cream", label: "Cloud Cream", emoji: "☁️", color: "#ffffff" },
+  { id: "vanilla-cream", family: "cream", label: "Vanilla Cream", emoji: "🍦", color: "#fff4c2" },
+  { id: "choco-chips", family: "chocolate", label: "Choco Chips", emoji: "🍫", color: "#8b4a2b" },
+  { id: "cocoa-stars", family: "chocolate", label: "Cocoa Stars", emoji: "🤎", color: "#a16207" }
+];
 const FALLBACK_REWARD_WORDS: WordEntry[] = [
   fallbackWord("fallback-hello", "hello"),
   fallbackWord("fallback-good", "good"),
@@ -126,6 +159,56 @@ export function buildRewardChoices(
     word: target.word
   };
   return shuffleRewardItems([targetItem, ...pool], seed).slice(0, count);
+}
+
+export function buildCakeMaterialChoices(seed: string, round: number): CakeMaterial[] {
+  const shuffled = shuffleRewardItems(CAKE_MATERIALS, `${seed}:cake:${round}`);
+  const choices: CakeMaterial[] = [];
+  const families = new Set<CakeMaterialFamily>();
+  for (const material of shuffled) {
+    if (choices.length >= 4) break;
+    if (families.has(material.family) && CAKE_MATERIALS.length - choices.length > 4) continue;
+    choices.push(material);
+    families.add(material.family);
+  }
+  if (choices.length >= 4) return choices;
+
+  for (const material of shuffled) {
+    if (choices.length >= 4) break;
+    if (!choices.some((choice) => choice.id === material.id)) choices.push(material);
+  }
+  return choices;
+}
+
+export function placeCakeMaterial(material: CakeMaterial, picked: ReadonlyArray<CakePick>): CakePick {
+  return {
+    ...material,
+    slotIndex: picked.length
+  };
+}
+
+export function calculateCakeScore(picks: ReadonlyArray<CakePick>): CakeScore {
+  const familyCount = new Set(picks.map((pick) => pick.family)).size;
+  const stars = Math.min(5, Math.max(3, familyCount + 1));
+  const title = stars >= 5 ? "Rainbow Chef" : stars === 4 ? "Cake Artist" : "Sweet Chef";
+  return { stars, title };
+}
+
+export function buildCakeImagePrompt(picks: ReadonlyArray<CakePick>, style: string): string {
+  const selectedToppings = picks
+    .map((pick, index) => `${index + 1}. ${pick.label} (${pick.family})`)
+    .join("; ");
+  return [
+    "Child-safe illustrated final cake reward image for a Chinese-speaking kid learning English.",
+    "Draw one cheerful finished cake selected by the child in the Hungry Monster bakery game.",
+    `Cake toppings selected by the child: ${selectedToppings || "simple frosting"}.`,
+    `Art style: ${style}.`,
+    "Make the cake look delicious, colorful, celebratory, and clearly built from those selected toppings.",
+    "Show the happy friendly green monster nearby admiring the cake, not scary.",
+    "Bright cartoon illustration, school-age child friendly, polished game reward art.",
+    "Not photorealistic, no realistic photo look, no live-action.",
+    "No readable text, no letters, no captions, no labels, no signs, no handwriting, no watermark."
+  ].join(" ");
 }
 
 export function buildRewardBoard({
